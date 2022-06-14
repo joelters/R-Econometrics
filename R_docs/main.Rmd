@@ -1,0 +1,102 @@
+---
+title: "R Econometrics"
+author: "Joël Terschuur"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("./functions.r")
+```
+
+
+We are going to use the Encuesta de Condiciones de Vida 2019 (ECV 2019) data to illustrate statistical and econometrics concepts.
+which is available at the website of the Instituto Nacional de Estadstica (INE) and contains information about
+annual income in 2018. This survey is one of the main references for the analysis of the income distribution
+and poverty in Spain and it is part of the European survey EU-SILC. In the years
+2005, 2011 and 2019 it includes a module on intergenerational transmission of disadvantages
+with information on circumstances outside the control of the individual such as sex, parental education/occupation,
+population of the municipality where they grew, whether they grew up without a mother/father, etc.
+We measure income with equivalized household income and the level of observation is the
+individual. We restrict the sample to those aged between 25 and 59 years old to focus on the
+working age population.
+
+For the moment we are just going to focus on income and forget about the circumstances. 
+The first thing to do is to load the data and do some summary statistics
+
+```{r}
+ecv <- read.csv("../Data/ecv2019.csv")
+summary(ecv$Y)
+```
+
+This already gives us some useful information. For instance, the average income in Spain is 17,861€, 
+the median is 15,937€ meaning that half of the sample has an income below 15,937 €. We also see that the
+observation with lowest income has 0.11€ and the one with the most income has 163,597 €. Finally, the poorest 
+25% of the sample has an income below 10,480€ and the richest 25% has an income above 22,769€.
+This already gives us an image of the distribution of income in our sample. One of the most useful concepts 
+which helps us get a more complete image of the distribution is the histogram
+
+```{r}
+hist(ecv$Y)
+```
+
+The x-axis is split into bins and the y-axis tells us the frequency (how many observations) are in each bin. Eventhough
+our data will always be discrete it is reasonable to model income as a continuous random variable, meaning it has
+a Lebesgue p.d.f. We can estimate this pdf:
+
+```{r}
+# Calculate density
+dy <- density(ecv$Y)
+# Add density
+plot(dy, lwd = 2, col = "red", main = "Income pdf")
+```
+
+As could already be seen from the histogram, the income distribution is characterizes by a fat right tail. This means 
+that the probability of extreme positive values does not decay as fast as for instance in the normal distribution. In
+economic terms this means that the probability of encountering individuals much richer than the rest does not go down
+as fast as other distributions such as the normal distribution. 
+
+Note that the y-axis of the density does not show the frequency of the income values as the histogram did. This is because
+the p.d.f. has to integrate to 1, $\int f(y) dy = 1$. We can plot the histogram and the density together if we force the 
+histogram to integrate to 1 as well.
+
+
+```{r}
+# Create a histogram
+hist(ecv$Y, freq = FALSE, main = "Histogram and density", ylim = c(0, max(dy$y)))
+# Add density
+lines(dy, lwd = 2, col = "red")
+```
+
+Another key statistical concept is the c.d.f., $F(x)$. Its sample analog is the empirical distribution function
+e.c.d.f. $F_n(y) = n^{-1}\sum_{i=1}^n 1(Y_i \leq y)$. This we can also compute and visualize with R
+
+```{r}
+# Create e.c.d.f.
+ecdf <- s_ecdf(ecv$Y)
+#Create step function object
+step_ecdf <- stepfun(sort(ecv$Y),c(0,ecdf))
+#Plot e.c.d.f
+plot(step_ecdf, main = "ECDF")
+```
+
+Functions preceded by $\texttt{s_}$ are in R_docs/functions.R and are not built in R (there are R packages with these
+functions but it is good to write them yourself). Of course, the e.c.d.f. satisfies all the properties of a c.d.f. Since
+we have a lot of observation the e.c.d.f looks almost continuous, however it is a step function. If we do the same with
+a random subset of only 20 observations
+
+```{r}
+#Create random sample
+Yr <- ecv$Y[sample(1:length(ecv$Y), 20, replace = TRUE)]
+# Create e.c.d.f.
+ecdf20 <- s_ecdf(Yr) 
+#Create step function object
+step_ecdf20 <- stepfun(sort(Yr),c(0,ecdf20))
+#Plot e.c.d.f
+plot(step_ecdf20, main = "ECDF n = 20")
+```
+
+
+
+
+

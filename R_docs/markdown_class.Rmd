@@ -1,0 +1,225 @@
+---
+title: "Class"
+author: "Joël"
+date: "25/11/2020"
+output: html_document
+---
+
+# Setup
+
+In the setup one usually uploads all the packages needed and the data which will be used, since the option include = FALSE, we will not see the code orits output in the html. If there is any chunk of code you do not want to see in your output document you can always set this option to false in the corresponding chunk
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install packages
+# install.packages("lmtest")
+# install.packages("sandwich")
+# install.packages("readr")
+# install.packages("knitr")
+# install.packages("pracma")
+# install.packages("ggplot2")
+# install.packages("ineq")
+
+#OLS stuff
+library(lmtest)
+library(sandwich)
+# library(car)
+#Reading data
+library(readr)
+#For making tables
+library(knitr)
+#For scalar vector product
+library(pracma)
+#Graphs (life cycle)
+library(ggplot2)
+#Lorenz curves and Gini
+library(ineq)
+
+data <- read_csv("../Data/CPS_8385.csv")
+```
+
+
+
+
+# This is a header
+
+In the middle of the chunks we can write text. For more details on using R Markdown see this [link](http://rmarkdown.rstudio.com), I have just introduced an hyperlink
+
+# Knitting (this is another header)
+
+When you click the **Knit** (bold) button a document will be generated that includes *both* (italics) content as well as the output of any embedded R code chunks within the document.
+
+## Other header
+
+Whenever a header or something does not work try putting an empty line before or after
+
+### Even smaller header
+
+#### Even smaller...
+
+# Lists
+
+Let us make a list
+
+  * This is the first bullet
+
+  * I can write another bullet
+    + Lets go deeper
+      - And deeper  
+        * and more
+        
+Enough of lists, let us put another chunk with some summary statistics of the data
+
+```{r}
+summary(data)
+```
+
+that was it, no more summary
+
+# Density of log wages
+Let us put another chunk of code which computes and plots the density of log wages. If we write `echo = FALSE` the chunk of code does not appear in the document, only the output 
+
+```{r, echo=FALSE}
+
+# Create a histogram
+hist(data$lwage, freq = FALSE, main = "Histogram and density")
+
+# Calculate density
+dx <- density(data$lwage)
+
+# Add density
+lines(dx, lwd = 2, col = "red")
+
+# Plot the density without histogram
+plot(dx, lwd = 2, col = "red",
+     main = "Density")
+```
+
+# Mean log wages by unionisation
+
+Let us see how to make a table where we have mean wages by unionisation and let us also plot the densities
+
+```{r, echo = FALSE}
+#over complicated way to make a table in order to talk about lists
+means <- list()
+means[1] <- mean(data$lwage[data$covered == 1])
+means[2]<- mean(data$lwage[data$covered == 0])
+vec <- c(means[1], means[2])
+names(vec) <- c("Unionised","Non-Unionised")
+#transpose the vector
+x <- t(vec)
+table <- kable(x, caption = "Average lwage by Unionisation")
+table
+
+#Densities
+# Calculate density Unionized
+dx1 <- density(data$lwage[data$covered == 1])
+dx0 <- density(data$lwage[data$covered == 0])
+plot(dx1, lwd = 2, col = "red",
+     main = "Density")
+lines(dx0, lwd = 2, col = "blue")
+
+```
+
+
+# Regression analysis
+
+Let us make a naive regression to see the effect of unionisation on lwages. In R you make regression with the command `lm()` from Linear Model (I guess). In order to get robust standard errors we need to do a bit more stuff compared to Stata.
+
+```{r}
+y <- data$lwage
+x <- data$covered
+ols_naive <- lm(y ~ x)
+summary(ols_naive)
+coeftest(ols_naive, vcov.=vcovHC(ols_naive, "HC0")) # Robust Standard Errors
+```
+
+# More regression analysis
+It might be that more educated workers or workers with more experience or older workers are those who get into trade unions and that it is education and experience what explains the positive relation between unionisation and wages, let us control for this
+
+```{r}
+ols <- lm(y ~ x + data$age + data$ed0 + data$ed1 + data$ed3 + data$ed4 + data$ed5)
+coeftest(ols, vcov.=vcovHC(ols, "HC0")) # Robust Standard Errors
+```
+
+
+# Oaxaca Blinder Decomposition
+
+Finally let us do a traditional Oaxaca Blinder decomposition to evaluate racial discrimination 
+
+First we estimate the regression for blacks, then for whites and then we decompose the overall difference into a structural and a composition term
+
+```{r echo = FALSE}
+
+ols_bl <- lm(lwage ~ covered +age + ed0 + ed1 + ed3 + ed4 + ed5,  data = subset(data, data$nonwhite == 1))
+
+ols_wh <- lm(lwage ~ covered + age + ed0 + ed1 + ed3 + ed4 + ed5,  data = subset(data, data$nonwhite == 0))
+
+# X <- cbind(rep(1,length(data$covered)), data$covered, data$age, data$ed0, data$ed1, data$ed3, data$ed4, data$ed5)
+
+df_bl <- subset(data, data$nonwhite == 1)
+df_wh <- subset(data, data$nonwhite == 0)
+aux_bl <- list(rep(1,length(data$lwage)), df_bl$covered, df_bl$age, df_bl$ed0, df_bl$ed1, df_bl$ed3, df_bl$ed4, df_bl$ed5)
+aux_wh <- list(rep(1,length(data$lwage)),df_wh$covered, df_wh$age, df_wh$ed0, df_wh$ed1, df_wh$ed3, df_wh$ed4, df_wh$ed5)
+
+over <- mean(df_bl$lwage) - mean(df_wh$lwage)
+
+Xbar1<- unlist(lapply(aux_bl, mean))
+Xbar0<- unlist(lapply(aux_wh, mean))
+
+str1 <- coef(ols_bl) - coef(ols_wh)
+str <- dot(Xbar1,str1)
+
+comp <- dot(Xbar1 - Xbar0,coef(ols_wh))
+
+str_detail <- Xbar1*str1 
+comp_detail <- (Xbar1 - Xbar0)*coef(ols_wh)
+
+vec <- cbind(over, str, comp)
+vec1 <- rbind(str_detail, comp_detail)
+
+kable(vec)
+kable(vec1)
+
+```
+
+We see that the overall difference in lwages is of -0.17 of which -0.14 is due to differences in returns and -0.03 to differences in composition. What seems to matter most are the differences in returns to age. This might be because the life cycle of earnings is flatter for nonwhite
+
+```{r, echo = FALSE}
+mean_bl <- aggregate(lwage ~ age, df_bl, mean)
+mean_wh <- aggregate(lwage ~ age, df_wh, mean)
+# ggplot(mean_df, aes(x = age, y = lwage)) + geom_line()
+
+ggplot(NULL, aes(age, lwage)) +
+geom_line(data = mean_bl, aes(y = lwage),col ="red") +
+geom_line(data = mean_wh, aes(y = lwage),col ="blue") 
+
+```
+
+
+#Lorenz curves and Gini
+
+Finally, let us check the overall Gini coefficient, the Gini within nonwhite and the Gini within white. Let us also plot the Lorenz curve.
+
+```{r, echo = FALSE}
+tot_gini <- ineq(exp(data$lwage), type = "Gini")
+bl_gini <- ineq(exp(df_bl$lwage), type = "Gini")
+wh_gini <- ineq(exp(df_wh$lwage), type = "Gini")
+
+kable(cbind(tot_gini,bl_gini,wh_gini))
+
+plot(Lc(data$lwage))
+# lines(Lc(df_bl$lwage))
+# lines(Lc(df_wh$lwage))
+```
+
+
+
+
+
+
+
+
+
+
+
