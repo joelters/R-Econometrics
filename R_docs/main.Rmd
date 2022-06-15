@@ -6,7 +6,13 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+set.seed(123)
 source("./functions.r")
+library(dplyr)
+library(latex2exp)
+library(ggplot2)
+library(sandwich)
+library(AER)
 ```
 
 
@@ -48,7 +54,7 @@ a Lebesgue p.d.f. We can estimate this pdf:
 # Calculate density
 dy <- density(ecv$Y)
 # Add density
-plot(dy, lwd = 2, col = "red", main = "Income pdf")
+plot(dy, lwd = 2, col = "red", main = "Income pdf", ylab = TeX("$f_n(y)$"))
 ```
 
 As could already be seen from the histogram, the income distribution is characterizes by a fat right tail. This means 
@@ -77,7 +83,7 @@ ecdf <- s_ecdf(ecv$Y)
 #Create step function object
 step_ecdf <- stepfun(sort(ecv$Y),c(0,ecdf))
 #Plot e.c.d.f
-plot(step_ecdf, main = "ECDF")
+plot(step_ecdf, main = "ECDF", ylab = TeX("$F_n(y)$"))
 ```
 
 Functions preceded by $\texttt{s_}$ are in R_docs/functions.R and are not built in R (there are R packages with these
@@ -87,14 +93,358 @@ a random subset of only 20 observations
 
 ```{r}
 #Create random sample
-Yr <- ecv$Y[sample(1:length(ecv$Y), 20, replace = TRUE)]
+n <- length(ecv$Y)
+Yr <- ecv$Y[sample(1:n, 20, replace = TRUE)]
 # Create e.c.d.f.
 ecdf20 <- s_ecdf(Yr) 
 #Create step function object
 step_ecdf20 <- stepfun(sort(Yr),c(0,ecdf20))
 #Plot e.c.d.f
-plot(step_ecdf20, main = "ECDF n = 20")
+plot(step_ecdf20, main = "ECDF n = 20", ylab = TeX("$F_n(y)$"))
 ```
+
+Quantiles are another key tool to understand the distribution of income, for $\tau \in [0,1]$
+
+$$ F^{-1}(\tau) = inf\{y: F(y) \geq \tau \} $$
+this is also called the generalized inverse. If $F$ is continuous (which implies monotone increasing since its 
+a cumulative function) then $F^{-1}(\tau)$ is the usual inverse. To find the quantile function in our data we
+can just look at the inverse of our e.c.d.f.
+
+```{r}
+df_q <- as_tibble(cbind(Y = sort(ecv$Y), ecdf = ecdf))
+plot(stepfun(ecdf,c(sort(ecv$Y),max(ecv$Y))),
+     xlim = c(0,1),
+     main = "Quantile function",
+     ylab = TeX("$F_n^{-1} (\tau)$"))
+```
+
+A popular inequality measure are quantile share ratios, for instance the quintile share ratios $S80/S20$, $S80/S40$
+and $S80/S60$ compute the ratio of the total income received by the top 20% of the population against the total income
+received by the poorest 20%, 40% and 60% respectively. Let's start using ggplot now
+
+```{r}
+quint_grid <- c(0.2,0.4,0.6)
+s80 <- sum(df_q$Y[which.min(abs(ecdf - 0.8)):n])
+s_quint <- vapply(quint_grid,
+                  function (x)  sum(df_q$Y[1:which.min(abs(ecdf - x))]),
+                  1)
+s80_quints <- as_tibble(cbind(grid = quint_grid,
+                              ratio = s80/s_quint))
+
+ggplot(s80_quints, aes(grid,ratio)) +
+  geom_point(color = "red", size = 3) + 
+  labs(x = "X", y = "S80/SX", title = "Share Quintile ratios")  
+  
+```
+
+So we can see that the income share of the top 20% is more than 6 times that of the poorest 20%.
+We can also look at the share of the top 10% against the share of the other deciles
+
+```{r}
+dec_grid <- seq(0.1,0.8,0.1)
+s90 <- sum(df_q$Y[which.min(abs(ecdf - 0.9)):n])
+s_dec <- vapply(dec_grid,
+                  function (x)  sum(df_q$Y[1:which.min(abs(ecdf - x))]),
+                  1)
+s90_decs <- as_tibble(cbind(grid = dec_grid,
+                              ratio = s90/s_dec))
+
+ggplot(s90_decs, aes(grid,ratio)) +
+  geom_point(color = "red", size = 3) + 
+  labs(x = "X", y = "S90/SX", title = "Share Decile ratios")  
+  
+```
+
+Here we can see that the income share of the top 10% is more than 10 times that of the poorest 10%.
+Finally, we can also compare the top 5% with poorest 5%, 10%, 15%, etc.
+
+```{r}
+f_grid <- seq(0.05,0.9,0.05)
+s95 <- sum(df_q$Y[which.min(abs(ecdf - 0.95)):n])
+s_f <- vapply(f_grid,
+                  function(x)  sum(df_q$Y[1:which.min(abs(ecdf - x))]),
+                  1)
+s95_fs <- as_tibble(cbind(grid = f_grid,
+                              ratio = s95/s_f))
+
+ggplot(s95_fs, aes(grid,ratio)) +
+  geom_point(color = "red", size = 3) + 
+  labs(x = "X", y = "S95/SX", title = " 95% Share ratios")  
+  
+```
+
+So the share of the top 5% is almost 20 times larger than the share of the bottom 5%.
+A fundamental tool in inequality is the Lorenz curve, this curve tracks the share of total
+income that each percentile has, formally 
+
+$$
+L(p) = \mu^{-1} \int_0^p F^{-1}(u) \, du
+$$
+Using the empirical quantile function we can plot this Lorenz curve
+
+```{r}
+shares <- vapply(ecdf,
+                  function(x)  sum(df_q$Y[1:which.min(abs(ecdf - x))])/sum(df_q$Y),
+                  1)
+
+lorenz <- as_tibble(cbind(p = ecdf,
+                          shares = shares))
+
+ggplot(lorenz, aes(p,shares)) +
+  geom_line(color = "red") + 
+  geom_abline(intercept = 0, slope = 1) +
+  labs(x = "p", y = "L(p)", title = "Lorenz curve")  
+  
+```
+
+Suppose that there was one individual who own all the income, then the Lorenz curve would be equal to $0$ and jump
+to one for $p=1$. If income was equally distributed the Lorenz curve would be equal to the $45^o$ degrees line.
+This motivates the use of the area between the $45^o$ degrees line and the Lorenz curve as a measure of inequality.
+If $A$ is the area between the $45^o$ degrees line and the Lorenz curve and $B$ is the area below the Lorenz curve,
+the Gini coefficient is
+
+$$
+G = \frac{A}{A+B} = 1 - 2 \int_0^1 L(p) \, dp
+$$
+Again, using the empirical counterparts we have that
+
+```{r}
+#numerical integral
+dp <- c(0,lorenz$p)
+aux <- 0
+n1 <- n-1
+for (i in 1:n1){
+  aux <- aux + lorenz$shares[i]*(dp[i+1] - dp[i])
+}
+G = 1 - 2*aux
+print(paste0("The Gini coefficient is ", round(G,2)))
+```
+# LLN and CLT
+
+In this part we are going to illustrate the Law of the Large Numbers and the Central Limit Theorem. For this we are
+going to forget about the data and simulate our own income data. A common parametric model for income is the log-normal
+model
+
+$$
+Y_i = e^{X_i}, \text{ with } X_i \sim \mathcal{N}(0,\sigma^2).
+$$
+This model is called log-normal because once you take logs the model is normal: $\ln Y_i = X_i$. It is particularly
+useful for modelling variables with fat right tails such as income. Let's generate $3000$ observations for
+$(\mu,\sigma) = (0,1)$ and plot an estimate of the density
+
+
+```{r}
+n <- 3000
+mu <- 0
+s <- 1
+Y <- s_dgp(n,mu,s)
+dy <- density(Y)
+# Add density
+plot(dy, lwd = 2, col = "red", main = "Simulated Y", ylab = TeX("$f_n(y)$"))
+```
+
+
+As we can see the distribution does seem to have a fat tail. A nice thing about simulations is that you 
+know the true value of the parameters, in this case we have a log-normal distribution with parameters
+$(\mu,\sigma) = (0,1)$. Given these parameters we can compute the true expectation of $Y$
+
+$$
+\mathbb{E}(Y_i) = e^{\mu + \sigma^2/2} = e^{1/2} = 1.648721...
+$$
+
+Let $\bar{Y} = n^{-1} \sum_{i=1}^n Y_i$, the LLN tells us that for all $\varepsilon > 0$
+
+$$
+\lim_{n \to \infty} \mathbb{P} \biggl( |\bar{Y} - \mathbb{E}(Y_i)| > \varepsilon \biggr) = 0,
+$$
+
+i.e. $\bar{Y} \to_p \mathbb{E}(Y_i)$. We can compute the sample average for different sample sizes to check whether
+this is true
+
+```{r}
+ngrid <- seq(10,10000,10)
+EY <- exp(0.5)
+lln <- vapply(ngrid, function(x) mean(s_dgp(x,0,1)),1)
+lln <- as_tibble(cbind(n = ngrid, mean = lln))
+ggplot(lln, aes(n,mean)) + 
+  geom_line(color = "red") + 
+  geom_abline(intercept = EY, slope = 0) + 
+  labs(title = "LLN")
+```
+
+So we see that for increasing sample sizes we concentrate around the true value. How much it takes to get to concentrate
+around the true value can change a lot depending on the underlying distribution, the LLN is an asymptotic result so it
+tells us what happens in the limit not on the way to the limit. For instance, let's see what happens if we compare our
+simulated data with normally generated data with the same mean and variance equal to $1/2$.
+
+```{r}
+
+lln2 <- vapply(ngrid, function(x) mean(rnorm(x,EY,0.5)),1)
+lln2 <- as_tibble(cbind(n = ngrid, mean = lln2, distr = rep(2,length(ngrid))))
+lln1 <- as_tibble(cbind(lln, distr = rep(1,length(ngrid))))
+lln_distr <- rbind(lln1,lln2)
+
+ggplot(lln_distr, aes(n,mean)) +
+  geom_line(aes(col = factor(distr))) +
+  geom_abline(intercept = EY, slope = 0) +
+  scale_color_discrete(name = "Distribution", labels = c("N","LN")) + 
+  labs(title = "LLN")
+```
+
+We see that the sample mean when the DGP is $\mathcal{N(e^{1/2},1/2)}$ concentrates much faster around the true value.
+
+The CLT states that
+
+$$
+\sqrt{n}(\bar{Y} - \mathbb{E}(Y_i)) \to_d \mathcal{N}(0,\mathbb{V}ar(Y_i))
+$$
+
+This means that for large $n$, $\bar{Y}$ is approximately distributed as a $\mathcal{N}(\mathbb{E}(Y_i), \mathbb{V}ar(Y_i)/n)$.
+We call $\sqrt{\mathbb{V}ar(Y_i)/n}$ the standard error of $\bar{X}$. For the log-normal we have that 
+$\mathbb{V}ar(Y_i) = (e^{\sigma^2} - 1)e^{2\mu + \sigma^2}$.
+To see how this approximation works we can extract many random samples, say $R$, of same sample size $n$
+and compute the sample mean for each one of them. That is, in the end we end up with a vector with $R$ sample means.
+This can be seen as $R$ random draws from the distribution of $\bar{Y}$ and hence they can be used to see how good
+the approximation is. If we do this for different sample sizes we can see how the CLT kicks in.
+
+
+```{r}
+ngrid <- c("n100" = 100,"n3000" = 3000)
+R <- 10000
+Rgrid <- 1:R
+mu <- 0
+s <- 1
+
+MC <- NULL
+for (i in 1:length(ngrid)){
+  MC <- cbind(vapply(Rgrid, function(x) mean(s_dgp(x,0,1)),1),MC)
+}
+colnames(MC) <- names(ngrid)
+MC <- as_tibble(MC)
+se_true <- sqrt(((exp(s^2) - 1)*(exp(2*mu) + s^2))/ngrid)
+
+c1 <- rgb(0,255,255,max = 255, alpha = 150, names = "lt.blue")
+xx <- c(1.5,1.8)
+yy <- c(0,15)
+br <- 300
+lsz <- 0.5
+lpos <- "topright"
+
+par(mfrow = c(1,2)) 
+
+hist(MC$n100, breaks = br, xlim = xx, ylim = yy,
+     xlab = "", ylab = "", freq = FALSE, col = c1, main = "")
+curve(dnorm(x,mean = EY, sd = se_true[1]),
+      col = "red", lwd = 2, add = TRUE)
+      title(main = "n = 100")
+      legend(lpos, legend = c("Simulation","Normal Distr."),
+      cex = lsz, col = c(c1,"red"), pch = c(15,NA), lty = c(NA,1))
+      abline(v=EY,col="red",lwd=2)
+
+
+hist(MC$n3000, breaks = br, xlim = xx, ylim = yy,
+     xlab = "", ylab = "", freq = FALSE, col = c1, main = "")
+curve(dnorm(x,mean = EY, sd = se_true[2]),
+      col = "red", lwd = 2, add = TRUE)
+abline(v=EY,col="red",lwd=2)
+title(main = "n = 3000")
+legend(lpos, legend = c("Simulation","Normal Distr."),
+       cex = lsz, col = c(c1,"red"), pch = c(15,NA), lty = c(NA,1))
+
+```
+
+We see that as theory predicts the sample mean is unbiased and the normal approximation improves as $n$ grows.
+
+#Ordinary Least Squares
+
+We can go back to our ECV data to run some regressions. To run a regression of log income on sex we write
+
+```{r}
+m1 <- lm(log(Y) ~ sex, ecv) 
+summary(m1)
+```
+
+So we see that the expected wage for males is 3% higher than that of female. However, our standard errors
+are not robust to heteroskedasticity. Unfortunately, in R it is a bit more of a hassle to have
+robust standard errors than in Stata, still it is not very hard either if we use the library $\texttt{sandwich}$ and
+$\texttt{AER}$
+
+```{r}
+vcv <- vcovHC(m1, type = "HC1")
+coeftest(m1, vcv)
+```
+So we see the coefficient is significant 5% level. A good exercise is to not use any package. Let $X_i = (1,sex_i)'$, we
+know that the ols estimator is
+
+$$
+\hat{\beta} = \mathbb{E}_n(X_i X_i')^{-1}\mathbb{E}_n(X_i Y_i) = (\mathbb{X}'\mathbb{X})^{-1}\mathbb{X}'\mathbb{Y},
+$$
+
+where $\mathbb{X} = (X_1',...,X_n')$ is called the design or model matrix and in this case has two columns, the first one
+filled with ones and the second one is $(sex_1,...,sex_n)'$ and $\mathbb{Y}$ is a column with $(Y_1,...,Y_n)$
+
+```{r}
+n <- length(ecv$Y)
+Y <- log(ecv$Y)
+sex <- as.numeric(as.factor(ecv$sex)) - 1
+XX <- cbind(rep(1,n),sex)
+m1 <- s_reg(XX,Y)
+print(m1$b)
+
+```
+
+As you see we get exactly the same as with the $\texttt{lm()}$ function. From OLS theory we know that under homoskedasticity
+
+$$
+\sqrt{n}(\hat{\beta} - \beta_0) \to_d \mathcal{N}(0, \Sigma), \text{ } \Sigma = \mathbb{E}(X_i X_i')^{-1} \mathbb{E}(u_i^2)
+$$
+where $u_i = Y_i - X_i' \beta_0$ and $\beta_0 = \mathbb{E}(X_i X_i')^{-1}\mathbb{E}(X_i Y_i)$, an estimator of $\Sigma$ is
+
+$$
+\hat{\Sigma} =  \mathbb{E}_n(X_i X_i')^{-1} \mathbb{E}_n(\hat{u}_i^2) = (\mathbb{X}'\mathbb{X})^{-1} (\hat{\mathbb{u}}'\hat{\mathbb{u}})
+$$
+
+where $\hat{\mathbb{u}} = (\hat{u}_1,...,\hat{u}_n)'$ and the standard errors are $se = (\sqrt{\Sigma_{11}/n},\sqrt{\Sigma_{22}/n})$
+with estimator $\hat{se} = (\sqrt{\hat{\Sigma}_{11}/n},\sqrt{\hat{\Sigma}_{22}/n})$
+
+```{r}
+print(m1$se)
+```
+
+
+So we see it's the same as with the pre-built package (for it to be exactly the same we would have to divide the
+sum of squared residuals by $1/(n-2)$ to correct for the degrees of freedom of estimating the intercept and the slople,
+still this is negligible asymptotically). More generally (without assuming homoskedasticity) we have 
+
+$$
+\sqrt{n}(\hat{\beta} - \beta_0) \to_d \mathcal{N}(0, \Sigma), \text{ } \Sigma = \mathbb{E}(X_i X_i')^{-1} \mathbb{E}(X_i X_i' u_i^2) \mathbb{E}(X_i X_i')^{-1}
+$$
+
+
+and
+
+$$
+\hat{\Sigma} = \mathbb{E}_n(X_i X_i')^{-1} \mathbb{E}_n(X_i X_i' \hat{u}_i^2) \mathbb{E}_n(X_i X_i')^{-1} = 
+\biggl(\frac{1}{n}\mathbb{X}'\mathbb{X}\biggr)^{-1}\biggl(\frac{1}{n}\sum_{i=1}^n u_i^2 X_i X_i'\biggr)\biggl(\frac{1}{n}\mathbb{X}'\mathbb{X}\biggr)^{-1}
+$$
+
+again to match exactly the standard errors with those i in-built packages we can divide the middle term by $n-2$ instead of $n$. For the middle term the matrix form would be $\mathbb{X}'B\mathbb{X}$ where $B = diag(u_1^2,...,u_n^2)$, since this is an nxn matrix 
+it will be heavy on the memory of the computer so it is better to just compute the sum with a loop.
+
+
+```{r}
+m2 <- s_reg(XX,Y,se = "r")
+print(m2$b)
+print(m2$se)
+
+```
+
+
+
+
+
+
+
 
 
 
