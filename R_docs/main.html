@@ -683,7 +683,9 @@ legend(lpos, legend = c(&quot;Simulation&quot;,&quot;Normal Distr.&quot;),
 <p>We see that as theory predicts the sample mean is unbiased and the
 normal approximation improves as <span class="math inline">\(n\)</span>
 grows.</p>
-<p>#Ordinary Least Squares</p>
+</div>
+<div id="ordinary-least-squares" class="section level1">
+<h1>Ordinary Least Squares</h1>
 <p>We can go back to our ECV data to run some regressions. To run a
 regression of log income on sex we write</p>
 <pre class="r"><code>m1 &lt;- lm(log(Y) ~ sex, ecv) 
@@ -762,12 +764,39 @@ of <span class="math inline">\(\Sigma\)</span> is</p>
 <span class="math inline">\(\hat{se} =
 (\sqrt{\hat{\Sigma}_{11}/n},\sqrt{\hat{\Sigma}_{22}/n})\)</span></p>
 <pre class="r"><code>print(m1$se)</code></pre>
-<pre><code>## [1] 0.009394002 0.013431591</code></pre>
+<pre><code>## [1] 0.009394559 0.013432387</code></pre>
 <p>So we see it’s the same as with the pre-built package (for it to be
 exactly the same we would have to divide the sum of squared residuals by
 <span class="math inline">\(1/(n-2)\)</span> to correct for the degrees
 of freedom of estimating the intercept and the slople, still this is
-negligible aysmptotically).</p>
+negligible asymptotically). More generally (without assuming
+homoskedasticity) we have</p>
+<p><span class="math display">\[
+\sqrt{n}(\hat{\beta} - \beta_0) \to_d \mathcal{N}(0, \Sigma), \text{ }
+\Sigma = \mathbb{E}(X_i X_i&#39;)^{-1} \mathbb{E}(X_i X_i&#39; u_i^2)
+\mathbb{E}(X_i X_i&#39;)^{-1}
+\]</span></p>
+<p>and</p>
+<p><span class="math display">\[
+\hat{\Sigma} = \mathbb{E}_n(X_i X_i&#39;)^{-1} \mathbb{E}_n(X_i X_i&#39;
+\hat{u}_i^2) \mathbb{E}_n(X_i X_i&#39;)^{-1} =
+\biggl(\frac{1}{n}\mathbb{X}&#39;\mathbb{X}\biggr)^{-1}\biggl(\frac{1}{n}\sum_{i=1}^n
+u_i^2 X_i
+X_i&#39;\biggr)\biggl(\frac{1}{n}\mathbb{X}&#39;\mathbb{X}\biggr)^{-1}
+\]</span></p>
+<p>again to match exactly the standard errors with those i in-built
+packages we can divide the middle term by <span class="math inline">\(n-2\)</span> instead of <span class="math inline">\(n\)</span>. For the middle term the matrix form
+would be <span class="math inline">\(\mathbb{X}&#39;B\mathbb{X}\)</span>
+where <span class="math inline">\(B = diag(u_1^2,...,u_n^2)\)</span>,
+since this is an nxn matrix it will be heavy on the memory of the
+computer so it is better to just compute the sum with a loop.</p>
+<pre class="r"><code>m2 &lt;- s_reg(XX,Y,se = &quot;r&quot;)
+print(m2$b)</code></pre>
+<pre><code>##           [,1]
+##     9.55385345
+## sex 0.03015465</code></pre>
+<pre class="r"><code>print(m2$se)</code></pre>
+<pre><code>## [1] 0.009386423 0.013432903</code></pre>
 </div>
 
 

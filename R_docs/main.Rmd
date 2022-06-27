@@ -355,7 +355,7 @@ legend(lpos, legend = c("Simulation","Normal Distr."),
 
 We see that as theory predicts the sample mean is unbiased and the normal approximation improves as $n$ grows.
 
-#Ordinary Least Squares
+# Ordinary Least Squares
 
 We can go back to our ECV data to run some regressions. To run a regression of log income on sex we write
 
