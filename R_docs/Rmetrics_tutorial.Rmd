@@ -593,4 +593,181 @@ res
 
 As predicted by OLS theory, OLS is unbiased, its accuracy measured by the MSE decreases as n increases. Also, the coverage of the heteroskedasticity robust standard errors is close to the nominal 0.95 while the standard errors computed under the assumption of homoskedasticity are far from 0.95.
 
+# Average Treatment Effects
+
+Suppose that we have some treatment $D_i \in \{0,1\}$ and an observed outcome $Y_i = D_i Y(1)_i + (1 - D_i)*Y(0)_i$ where $Y(D_i)_i$ is a potential outcome: the outcome individual $i$ gets under $D_i$. Since in our data individuals are either treated or not, there is always an element of the pair $(Y(1)_i,Y(0)_i)$ which we do not observe. If the potential outcomes are independent from treatment $A1: (Y(1)_i,Y(0)_i) \perp D_i$ (e.g. if the treatment is randomized) then we can identify what we call the Average treatment effect (ATE):
+
+$$
+\tau_0 = \mathbb{E}[Y(1)_i - Y(0)_i] = \mathbb{E}[Y_i | D_i = 1] - \mathbb{E}[Y_i | D_i = 0] ,
+$$
+where the second equality follows from A1. We can estimate $\tau_0$ by OLS by simply running a regression of $Y_i$ on a constant and $D_i$ and we can take the robust OLS standard errors. It is also common to include other regressors $X_i$ to the regression. Since $D_i$ is randomly assigned, $X_i$ will be independent of $D_i$ and hence will not affect the parameter associated to $D_i$, also, if $X_i$ has explanatory power over $Y_i$ it will increase the precision of our ATE estimator by reducing the variance of the residuals. 
+
+Let us load data used in Lalonde (1986) and Dehejia & Wahba (1999) of a random experiment (National Supported Work (NSW)) where job training is assigned at random among a group of disadvantaged individuals. We also clean the workspace and load some packages we are going to need in this section (we download the package containing the data from github using devtools, check the link for more info).
+
+
+```{r, results='hide'}
+rm(list = ls())
+library(devtools)
+library(dplyr)
+#download package from github see https://github.com/jjchern/lalonde
+devtools::install_github("jjchern/lalonde")
+
+exp_df <- as_tibble(lalonde::nsw)
+print(exp_df)
+```
+
+We are interested in real earnings in 1978 (re78) since in 1978 the program had already finished. Since this data is experimental we can directly estimate the ATE without adjusting for covariates and adjusting for covariates (we adjust for age, age squared, education, race and high school degree)
+
+```{r}
+m1exp <- lm(re78 ~ treat, exp_df)
+summary(m1exp)
+tau1exp <- m1exp$coefficients[2]
+m2exp <- lm(re78 ~ treat + poly(age,2) + education + black + hispanic + nodegree, exp_df)
+summary(m2exp)
+tau2exp <- m2exp$coefficients[2]
+print(c("ATE" = tau1exp, "Adjusted ATE" = tau2exp))
+``` 
+We can see that the unadjusted ATE is 886 dollars, meaning that real earnings of treated individuals in 1978 were 886 dolars higher than the real earnings of the control. When adjusting for covariates the ATE decreases slightly to almost 800 dollars. In both cases we have that the effect is significant at the 10% level.
+
+The main idea in Lalonde (1986) and Dehejia & Wahba (1999) is to replace the experimental control group with a control group which is taken from a survey. This means that we go from an experimental setting to an observational one (one where the potential outcomes cannot be expected to be independent from the treatment). The goal is to see whether observational methods can get near to the experimental estimates. To construct this database we keep only the treated from the experimental data and take as control the Current Population Survey (CPS).
+
+```{r}
+cps_lalonde <- lalonde::cps_controls
+obs_df <- exp_df %>%
+  filter(treat == 1) %>% 
+  bind_rows(cps_lalonde) %>% 
+  select(-data_id)
+```
+
+To be able to identify treatment effects we still need to assume selection on observables: $A1': (Y(1)_i, Y(0)_i) \perp D_i | X_i$. That is, the distribution of the potential outcomes now can vary for individuals with different treatments as long as they have different covariates, however, for those with the same covariates, the potential outcomes still have to be independent from treatment. When the dimension of $X_i$ is large it is handy to define the propensity score:
+
+$$
+p(X_i) = \mathbb{P}(D_i = 1 | X_i),
+$$
+i.e. the probability of being treated given the covariates. This is useful thanks to two results in Rosenbaum & Rubin(1983). Mainly that if selection on observables holds and $A2: 0< p(X_i) < 1$ a.s. (Common Suppport), then $(Y(1)_i, Y(0)_i) \perp D_i | p(X_i)$, i.e. it is enough to control for $p(X_i)$. Also, if $p(X_i)$ is the propensity score then $X_i \perp D_i | p(X_i)$, so the distribution of $X_i$ does not vary across treatment status given the propensity score. One can show that under A1' and A2
+
+$$
+\tau_0 = \mathbb{E}\biggl(\frac{D_i Y_i}{p(X_i)} - \frac{(1-D_i)Y_i}{1 - p(X_i)} \biggr).
+$$
+However, $p(X_i)$ is generally unknown and has to be estimated. To this end we can impose a parametric model. A popular choice is 
+
+$$
+p(X_i) = G(X_i' \beta),
+$$
+where $G(\cdot)$ is the c.d.f of a distribution which is symmetric around 0 and $\beta$ is a vector of parameters. Then the conditional likelihood of $D_i|X_i$ is
+
+$$
+f(D_i|X_i; \beta) = G(X_i' \beta)^{D_i}[1-G(X_i' \beta)]^{1-D_i}
+$$
+
+and the log-likelihood
+
+$$
+l_i(\beta) = D_i  \log G(X_i' \beta) + (1 - D_i) \log[1 - G(X_i' \beta)] 
+$$
+and $\hat{\beta} = \arg \max_\beta \sum_{i=1}^n l_i(\beta)$. A popular choice of $G(\cdot)$ is the logit model
+
+$$
+G(z) = \frac{e^z}{1 + e^z},
+$$
+
+for which it is simple to compute the score. To estimate the propensity score $\hat{p}(X_i) = G(X_i' \hat{\beta})$ using a logit model in R we can do the following (we introduce as new covariates age squared, married and earnings in 1975 and its squared following Dehejia and Wahba (1999))
+
+```{r}
+logm = glm(treat ~ poly(age,2) + poly(education,2) + married + poly(re75,2) + black + hispanic + nodegree,
+             data = obs_df, family = "binomial")
+obs_df$pscore <- logm$fitted.values
+```
+
+
+Now, we are ready to estimate $\tau_0$ as
+
+$$
+\hat{\tau}^{IPW}_1 = \frac{1}{n}\sum_{i=1}^n \frac{D_i Y_i}{\hat{p}(X_i)} - \frac{1}{n}\sum_{i=1}^n\frac{(1-D_i)Y_i}{1-\hat{p}(X_i)}
+$$
+Noting that $\mathbb{E}[D_i/p(X_i)] = 1$ by LIE and the same happens with $\mathbb{E}[(1-D_i)/(1-p(X_i))]$, an asymptotically equivalent estimator is
+
+$$
+\hat{\tau}^{IPW}_2 = \biggl(\sum_{i=1}^n \frac{D_i}{\hat{p}(X_i)}\biggr)^{-1} \biggl(\sum_{i=1}^n \frac{D_i Y_i}{\hat{p}(X_i)}\biggr) - \biggl(\sum_{i=1}^n \frac{1-D_i}{1-\hat{p}(X_i)}\biggr)^{-1} \biggl(\sum_{i=1}^n\frac{(1-D_i)Y_i}{1-\hat{p}(X_i)}\biggr)
+$$
+$\hat{\tau}^{IPW}_1$ and $\hat{\tau}^{IPW}_2$ are called Inverse Probability Weight (IPW) estimators and are a difference of weighted sums of $Y_i$. In $\hat{\tau}^{IPW}_2$ the weights sum up to $1$ and we have better finite sample properties. In fact, both estimators are members of the broader class of consistent, semiparametric estimators found in Robins, Rotnitzky and Zhao (1994). In this paper they find the estimator achieving the least asymptotic variance in this class to be none of the above but
+
+$$
+\hat{\tau}^{DR} = \frac{1}{n}\sum_{i=1}^n \frac{D_iY_i - m_1(X_i)(D_i - \hat{p}(X_i))}{\hat{p}(X_i)} - \frac{1}{n}\sum_{i=1}^n \frac{(1-D_i)Y_i - m_0(X_i)(D_i - \hat{p}(X_i))}{1 - \hat{p}(X_i)}, 
+$$
+where $m_j(X_i) = \mathbb{E}[Y_i | D_i = j, X_i]$, $j = 0,1$. This estimator is called Doubly robust because it has the attractive property that if we impose some parametric specification say $m_j(X_i) = m_j(X_i, \alpha_j)$, the estimator is still consistent if $m_j$ is incorrectly specified but the specification of the propensity score is correct and it is also consistent if the specification of the propensity score is not correct but that of $m_j$ is correct. This estimator is also called augmented IPW since it is "augmented" with the outcome regression. Now we are ready to do these estimations in R
+
+```{r}
+Y <- obs_df$re78
+D <- obs_df$treat
+PS <- obs_df$pscore
+
+ipw1 <- mean(D*Y/PS - (1-D)*Y/(1-PS))
+ipw2 <- (1/(sum(D/PS)))*sum(D*Y/PS) - (1/(sum((1-D)/(1-PS))))*sum((1-D)*Y/(1-PS))
+
+# Doubly Robust
+m1 <- lm(re78 ~ poly(age,2) + education + black + hispanic + nodegree, filter(obs_df,treat == 1))
+m1hat <- predict(m1, obs_df)
+m0 <- lm(re78 ~ poly(age,2) + education + black + hispanic + nodegree, filter(obs_df,treat == 0))
+m0hat <- predict(m0, obs_df)
+
+ipwdr <- mean((D*Y - (D-PS)*m1hat)/PS) - mean(((1-D)*Y - (D-PS)*m0hat)/(1-PS))
+c("IPW1" = ipw1, "IPW2" = ipw2, "DR" = ipwdr)
+```
+
+We can see that the estimates are not very stable. This can happen when the common support assumption is violated since having estimated propensity scores in the denominators which are close to zero will produce instability. In our case it is very hard to maintain the common support assumption. To see these let us do an histogram with the propensity scores by treatment status.
+
+```{r}
+c1 <- rgb(173,216,230,max = 255, alpha = 180, names = "lt.blue")
+c2 <- rgb(255,192,203, max = 255, alpha = 180, names = "lt.pink")
+
+par(mar = c(5, 5, 5, 5) + 0.3)
+hist(filter(obs_df, treat == 1)$pscore, freq = TRUE, col = c1, axes = FALSE, xlab = "", ylab = "", main = "")
+axis(side = 1, xlim = c(0,1))
+axis(side = 4, ylab = "")
+mtext(side = 4, text = "NSW", line = 2.5, col = "blue")
+par(new=TRUE)
+hist(filter(obs_df, treat == 0)$pscore, ylim = c(0,16000), freq = TRUE, axes = FALSE, col = c2, xlab = "", ylab = "", main = "Common Support")
+axis(side = 2)
+mtext(side = 2, text = "CPS", line = 2.5, col = "pink")
+```
+
+
+We see that the control group (the CPS observations) are highly concentrated close to zero. This is because the NSW experiment chose disadvantaged individuals which are not representative of the US population as the CPS is. Hence, we have a comparability issue. A practical solution is to trim the observations with very low propensity scores. For instance, if we trim observation with a propensity score lower than 0.25 we see the Common Support assumption seems more plausible
+
+````{r}
+obs_df <- filter(obs_df, pscore > 0.25)
+
+par(mar = c(5, 5, 5, 5) + 0.3)
+hist(filter(obs_df, treat == 1)$pscore, freq = TRUE, col = c1, axes = FALSE, xlab = "", ylab = "", main = "")
+axis(side = 1, xlim = c(0,1))
+axis(side = 4, ylab = "")
+mtext(side = 4, text = "NSW", line = 2.5, col = "blue")
+par(new=TRUE)
+hist(filter(obs_df, treat == 0)$pscore, freq = TRUE, axes = FALSE, col = c2, xlab = "", ylab = "", main = "Common Support")
+axis(side = 2)
+mtext(side = 2, text = "CPS", line = 2.5, col = "pink")
+```
+
+
+and the estimates become more stable and much closer to the experimental treatment effect.
+
+```{r, warning=FALSE}
+Y <- obs_df$re78
+D <- obs_df$treat
+PS <- obs_df$pscore
+
+ipw1 <- mean(D*Y/PS - (1-D)*Y/(1-PS))
+ipw2 <- (1/(sum(D/PS)))*sum(D*Y/PS) - (1/(sum((1-D)/(1-PS))))*sum((1-D)*Y/(1-PS))
+
+# Doubly Robust
+m1 <- lm(re78 ~ poly(age,2) + education + black + hispanic + nodegree, filter(obs_df,treat == 1))
+m1hat <- predict(m1, obs_df)
+m0 <- lm(re78 ~ poly(age,2) + education + black + hispanic + nodegree, filter(obs_df,treat == 0))
+m0hat <- predict(m0, obs_df)
+
+ipwdr <- mean((D*Y - (D-PS)*m1hat)/PS) - mean(((1-D)*Y - (D-PS)*m0hat)/(1-PS))
+c("IPW1" = ipw1, "IPW2" = ipw2, "DR" = ipwdr)
+```
+
 
