@@ -26,14 +26,14 @@ tau2exp <- m2exp$coefficients[2]
 # tau3exp <- b1_binter[1] + b1_binter[2:7] %*% colMeans(nsw_lalonde[,3:8])
 # 
 # #to get inference in 3
-# Y <- nsw_lalonde$re78
-# D <- nsw_lalonde$treat
-# X <- nsw_lalonde[,3:8]
-# DXc <- D*scale(X, center = TRUE, scale = FALSE)
-# colnames(DXc) <- paste("dx",names(X), sep = "_")
-# df3 <- cbind(Y = Y,D,X,DXc)
-# m3exp <- lm(Y ~., df3)
-# summary(m3exp)
+Y <- nsw_lalonde$re78
+D <- nsw_lalonde$treat
+X <- nsw_lalonde[,3:8]
+DXc <- D*scale(X, center = TRUE, scale = FALSE)
+colnames(DXc) <- paste("dx",names(X), sep = "_")
+df3 <- cbind(Y = Y,D,X,DXc)
+m3exp <- lm(Y ~., df3)
+summary(m3exp)
 
 
 #OBSERVATIONAL ASSUMING CMIA
