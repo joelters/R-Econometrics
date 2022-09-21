@@ -6,6 +6,7 @@ output:
     theme: yeti
     toc: true
     toc_float: true
+bibliography: references.bib
 ---
 
 ```{r setup, include=FALSE}
@@ -602,14 +603,16 @@ Suppose that we have some treatment $D_i \in \{0,1\}$ and an observed outcome $Y
 $$
 \tau_0 = \mathbb{E}[Y(1)_i - Y(0)_i] = \mathbb{E}[Y_i | D_i = 1] - \mathbb{E}[Y_i | D_i = 0] ,
 $$
-where the second equality follows from A1. Let us load data used in Lalonde (1986) and Dehejia & Wahba (1999) of a random experiment (National Supported Work (NSW)) where job training is assigned at random among a group of disadvantaged individuals. We also clean the workspace and load some packages we are going to need in this section (we download the package containing the data from github using devtools, check the link for more info).
+where the second equality follows from A1. Let us load data used in [@lalonde1986evaluating] and [@dehejia1999causal] of a random experiment (National Supported Work (NSW)) where job training is assigned at random among a group of disadvantaged individuals. We also clean the workspace and load some packages we are going to need in this section (we download the package containing the data from github using devtools, check the link for more info).
 
 
-```{r, results='hide'}
+```{r, warning=FALSE, message=FALSE}
 rm(list = ls())
 library(devtools)
 library(dplyr)
 library(lmtest)
+library(matlib)
+library(ranger)
 #download package from github see https://github.com/jjchern/lalonde
 devtools::install_github("jjchern/lalonde")
 
@@ -647,45 +650,47 @@ where by construction $\mathbb{E}[\varepsilon_i |D_i] = 0$. Hence we can estimat
 m1exp <- lm(re78 ~ treat, exp_df)
 lmtest::coeftest(m1exp, vcov=sandwich::vcovHC(m1exp, type='HC2'))[2,]
 ```
-The regression approach is useful since it allows to adjust for covariates. This means adding other covariates $X_i$ as regressors. Since $D_i$ is randomly assigned, $X_i$ will be independent of $D_i$ and hence will not affect the parameter associated to $D_i$, also, if $X_i$ has explanatory power over $Y_i$ it will increase the precision of our ATE estimator by reducing the variance of the residuals. For instance, following Lalonde (1986) and Dehejia & Wahba (1999) we can adjust for age, age squared, education, race and high school degree. 
+
+The regression approach is useful since it allows to adjust for covariates. This means adding other covariates $X_i$ as regressors. Since $D_i$ is randomly assigned, $X_i$ will be independent of $D_i$ and hence will not affect the parameter associated to $D_i$, also, if $X_i$ has explanatory power over $Y_i$ it will increase the precision of our ATE estimator by reducing the variance of the residuals. For instance, following [@lalonde1986evaluating] and [@dehejia1999causal] we can adjust for age, age squared, education, race and high school degree. 
 
 
 ```{r}
 m2exp <- lm(re78 ~ treat + poly(age,2) + education + black + hispanic + nodegree, exp_df)
 lmtest::coeftest(m2exp, vcov=sandwich::vcovHC(m2exp, type='HC2'))[2,]
 ``` 
+
 The unadjusted ATE was 886 dollars, meaning that real earnings of treated individuals in 1978 were 886 dollars higher than the real earnings of the control. When adjusting for covariates the ATE decreases slightly to almost 800 dollars. We see that the adjusted estimate is more precise although less significant since it is closer to zero.
 
-##Selection on observables
+## Selection on observables
 
-The main idea in Lalonde (1986) and Dehejia & Wahba (1999) is to replace the experimental control group with a control group which is taken from a survey. This means that we go from an experimental setting to an observational one (one where the potential outcomes cannot be expected to be independent from the treatment). The goal is to see whether observational methods can get near to the experimental estimates. To construct this database we keep only the treated from the experimental data and take as control the Current Population Survey (CPS).
+The main idea in [@lalonde1986evaluating] and [@dehejia1999causal] is to replace the experimental control group with a control group which is taken from a survey. This means that we go from an experimental setting to an observational one (one where the potential outcomes cannot be expected to be independent from the treatment). The goal is to see whether observational methods can get near to the experimental estimates. To construct this database we keep only the treated from the experimental data and take as control the Current Population Survey (CPS).
 
 ```{r}
-cps_lalonde <- lalonde::cps_controls
+cps_lalonde <- lalonde::cps_controls2
 obs_df <- exp_df %>%
   filter(treat == 1) %>% 
   bind_rows(cps_lalonde) %>% 
-  select(-data_id)
+  dplyr::select(-data_id)
 ```
 
-To be able to identify treatment effects we still need to assume selection on observables: $A1': (Y(1)_i, Y(0)_i) \perp D_i | X_i$. That is, the distribution of the potential outcomes now can vary for individuals with different treatments as long as they have different covariates, however, for those with the same covariates, the potential outcomes still have to be independent from treatment. Let us define and ATE which might depend on $X_i$ and denote it as $ATE(X_i)$ (also called CATE)
+To be able to identify treatment effects we still need to assume selection on observables: $A1': (Y(1)_i, Y(0)_i) \perp D_i | X_i$. That is, the distribution of the potential outcomes now can vary for individuals with different treatments as long as they have different covariates, however, for those with the same covariates, the potential outcomes still have to be independent from treatment. Let us define an ATE which might depend on $X_i$ and denote it as $ATE(X_i)$ (also called CATE)
 
 $$
 ATE(X_i) = \mathbb{E}[Y(1)_i| X_i] - \mathbb{E}[Y(0)_i |X_i].
 $$
-By A1' we have that
+To retrieve the ATE we can just take $\mathbb{E}[ATE(X_i)]$. By A1' we have that
 
 $$
 ATE(X_i) = \mathbb{E}[Y_i | D_i = 1, X_i] - \mathbb{E}[Y_i | D_i = 0, X_i].  
 $$
 
-If the ATE is constant across the support of $X_i$, then $ATE = ATE(X_i)$. One case in which this is true is under the assumption that $\mathbb{E}[Y_i | D_i, X_i] = \delta_0 + \tau D_i + \delta_1' X_i$. Under this linearity assumption, the ATE can be estimated by OLS
+By specifying some regression $m_1(X_i) = \mathbb{E}[Y_i | D_i = 1, X_i]$ and $m_0(X_i) = \mathbb{E}[Y_i | D_i = 0, X_i]$ and estimating the regressions we get what is sometimes called a **direct estimator**. If the ATE is constant across the support of $X_i$, then $ATE = ATE(X_i)$. One case in which this is true is under the assumption that $\mathbb{E}[Y_i | D_i, X_i] = \delta_0 + \tau D_i + \delta_1' X_i$. Under this linearity assumption, the ATE can be estimated by OLS
 
 ```{r}
 m1obs <- lm(re78 ~ treat + poly(age,2) + education + black + hispanic + nodegree, obs_df)
 lmtest::coeftest(m1obs, vcov=sandwich::vcovHC(m1obs, type='HC2'))[2,]
 ```
-we see that the estimated ATE is very negative. This is because the the treatment and the control are hardly comparable. The treatment is formed by disadvantaged individuals and the control by a representative sample of the US population. In the absence of treatment disadvantaged individuals would already have much lower earnings. One way of allowing for $ATE(X_i)$ to vary with $X_i$ is to assume two different linear regressions for treated and untreated. This is equivalent to specifying one linear regression with an interaction term. 
+we see that the estimated ATE is very negative. This is because the treatment and the control are hardly comparable. The treatment is formed by disadvantaged individuals and the control by a representative sample of the US population. In the absence of treatment disadvantaged individuals would already have much lower earnings. One way of allowing for $ATE(X_i)$ to vary with $X_i$ is to assume two different linear regressions for treated and untreated. This is equivalent to specifying one linear regression with an interaction term. 
 
 $$
 \mathbb{E}[Y_i | D_i, X_i] = \gamma_0 + \gamma_1 D_i + \gamma_2' X_i + \gamma_3' (D_i X_i).
@@ -701,7 +706,7 @@ where $\tilde{X}_i$ is $X_i$ minus its mean. Then it can be showed that $ATE = \
 ```{r}
 Y <- obs_df$re78
 D <- obs_df$treat
-X <- select(obs_df, c("age", "education", "black", "hispanic", "nodegree"))
+X <- dplyr::select(obs_df, c("age", "education", "black", "hispanic", "nodegree"))
 X$agesq <- X$age^2
 DXc <- D*scale(X, center = TRUE, scale = FALSE)
 colnames(DXc) <- paste("dx",names(X), sep = "_")
@@ -745,7 +750,7 @@ $$
 G(z) = \frac{e^z}{1 + e^z},
 $$
 
-for which it is simple to compute the score. To estimate the propensity score $\hat{p}(X_i) = G(X_i' \hat{\beta})$ using a logit model in R we can do the following (we introduce as new covariates age squared, married and earnings in 1975 and its squared following Dehejia and Wahba (1999))
+for which it is simple to compute the score. To estimate the propensity score $\hat{p}(X_i) = G(X_i' \hat{\beta})$ using a logit model in R we can do the following (we introduce as new covariates age squared, married and earnings in 1975 and its squared following [@dehejia1999causal])
 
 ```{r}
 obs_df$agesq <- obs_df$age^2
@@ -770,7 +775,7 @@ $$
 \hat{\tau}^{IPW}_2 = \biggl(\sum_{i=1}^n \frac{D_i}{\hat{p}(X_i)}\biggr)^{-1} \biggl(\sum_{i=1}^n \frac{D_i Y_i}{\hat{p}(X_i)}\biggr) - \biggl(\sum_{i=1}^n \frac{1-D_i}{1-\hat{p}(X_i)}\biggr)^{-1} \biggl(\sum_{i=1}^n\frac{(1-D_i)Y_i}{1-\hat{p}(X_i)}\biggr)
 $$
 
-$\hat{\tau}^{IPW}_1$ and $\hat{\tau}^{IPW}_2$ are called Inverse Probability Weight (IPW) estimators and are a difference of weighted sums of $Y_i$. In $\hat{\tau}^{IPW}_2$ the weights sum up to $1$ and we have better finite sample properties. In fact, both estimators are members of the broader class of consistent, semiparametric estimators found in Robins, Rotnitzky and Zhao (1994). In this paper they find the estimator achieving the least asymptotic variance in this class to be none of the above but
+$\hat{\tau}^{IPW}_1$ and $\hat{\tau}^{IPW}_2$ are called Inverse Probability Weight (IPW) estimators and are a difference of weighted sums of $Y_i$. In $\hat{\tau}^{IPW}_2$ the weights sum up to $1$ and we have better finite sample properties. In fact, both estimators are members of the broader class of consistent, semiparametric estimators found in [@robins1994estimation]. In this paper they find the estimator achieving the least asymptotic variance in this class to be none of the above but
 
 $$
 \hat{\tau}^{DR} = \frac{1}{n}\sum_{i=1}^n \frac{D_iY_i - \hat{m}_1(X_i)(D_i - \hat{p}(X_i))}{\hat{p}(X_i)} - \frac{1}{n}\sum_{i=1}^n \frac{(1-D_i)Y_i - \hat{m}_0(X_i)(D_i - \hat{p}(X_i))}{1 - \hat{p}(X_i)}, 
@@ -808,16 +813,16 @@ axis(side = 1, xlim = c(0,1))
 axis(side = 4, ylab = "")
 mtext(side = 4, text = "NSW", line = 2.5, col = "blue")
 par(new=TRUE)
-hist(filter(obs_df, treat == 0)$pscore, ylim = c(0,16000), freq = TRUE, axes = FALSE, col = c2, xlab = "", ylab = "", main = "Common Support")
+hist(filter(obs_df, treat == 0)$pscore, ylim = c(0,3000), freq = TRUE, axes = FALSE, col = c2, xlab = "", ylab = "", main = "Common Support")
 axis(side = 2)
 mtext(side = 2, text = "CPS", line = 2.5, col = "pink")
 ```
 
 
-We see that the control group (the CPS observations) are highly concentrated close to zero. This is because the NSW experiment chose disadvantaged individuals which are not representative of the US population as the CPS is. Hence, we have a comparability issue. A practical solution is to trim the observations with very low propensity scores. For instance, if we trim observation with a propensity score lower than 0.25 we see the Common Support assumption seems more plausible
+We see that the control group (the CPS observations) are highly concentrated close to zero. This is because the NSW experiment chose disadvantaged individuals which are not representative of the US population as the CPS is. Hence, we have a comparability issue. A practical solution is to trim the observations with very low (or high) propensity scores. For instance, if we trim observation with a propensity score lower than 0.1 and higher than 0.9 we see the Common Support assumption seems more plausible
 
 ````{r}
-obs_dftrim <- filter(obs_df, pscore > 0.25)
+obs_dftrim <- filter(obs_df, pscore > 0.1 & pscore < 0.9)
 
 par(mar = c(5, 5, 5, 5) + 0.3)
 hist(filter(obs_dftrim, treat == 1)$pscore, freq = TRUE, col = c1, axes = FALSE, xlab = "", ylab = "", main = "")
@@ -831,7 +836,7 @@ mtext(side = 2, text = "CPS", line = 2.5, col = "pink")
 ```
 
 
-and the estimates become more stable and much closer to the experimental treatment effect.
+and the estimates become more stable.
 
 ```{r, warning=FALSE}
 Ytr <- obs_dftrim$re78
@@ -848,7 +853,18 @@ m0 <- lm(re78 ~ poly(age,2) + education + black + hispanic + nodegree, filter(ob
 m0hat <- predict(m0, obs_dftrim)
 
 ipwdrtr <- mean((Dtr*Ytr - (Dtr-PStr)*m1hat)/PStr) - mean(((1-Dtr)*Ytr - (Dtr-PStr)*m0hat)/(1-PStr))
-c("IPW1" = ipw1, "IPW2" = ipw2, "DR" = ipwdr)
+c("IPW1" = ipw1tr, "IPW2" = ipw2tr, "DR" = ipwdrtr)
+```
+
+For the rest of this exercise let us restrict the sample to these observations
+
+```{r}
+obs_df <- obs_dftrim
+PS <- PStr
+Y <- Ytr
+D <- Dtr
+ipw1 <- ipw1tr
+ipw2 <- ipw2tr
 ```
 
 ## Inference on IPW
@@ -857,7 +873,7 @@ $\hat{\tau}_1^{IPW}$ and $\tau_2^{IPW}$ can be written as Z-estimators. Let us i
 
 $$
 q(Z_i, \theta) = \begin{pmatrix}
-\frac{D_i Y_i}{G(X_i)} - \frac{(1-D_i)Y_i}{1 - G(X_i)} - \tau \\
+\frac{D_i Y_i}{G(X_i' \beta)} - \frac{(1-D_i)Y_i}{1 - G(X_i' \beta)} - \tau \\
 X_i(D_i - G(X_i'\beta))
 \end{pmatrix}
 $$
@@ -870,7 +886,7 @@ $$
 where $\bar{\theta}$ is some intermediate point between $\hat{\theta}$ and $\theta_0$. So we can estimate the variance as
 
 $$
-\hat{V}_1 = \biggl(n^{-1}\sum_{i=1}^n \dot{q}(Z_i,\theta_0)\biggr)^{-1} \biggl(n^{-1}\sum_{i=1}^nq(Z_i, \theta_0)^2 \biggr) \biggl(n^{-1}\sum_{i=1}^n \dot{q}(Z_i,\theta_0)\biggr)^{-1}
+\hat{V}_1 = \biggl(n^{-1}\sum_{i=1}^n \dot{q}(Z_i,\hat{\theta})\biggr)^{-1} \biggl(n^{-1}\sum_{i=1}^nq(Z_i, \hat{\theta}) q(Z_i, \hat{\theta})' \biggr) \biggl(n^{-1}\sum_{i=1}^n \dot{q}(Z_i,\hat{\theta})\biggr)^{-1}
 $$
 
 
@@ -878,7 +894,7 @@ Noticing that $\frac{d}{d u} G(u) = G(u)(1-G(u))$ we can compute the $(k + 1) \t
 
 $$
 \dot{q}(Z_i, \theta) = \begin{pmatrix}
--1 & -X_i'\biggl(\frac{D_iY_i}{G(X_i'\beta)} - \frac{(1-D_i)Y_iG(X_i'\beta)(1-G(X_i'\beta))}{(1-G(X_i' \beta))^2}\biggr) \\
+-1 & -X_i'\biggl(\frac{D_iY_i(1-G(X_i'\beta))}{G(X_i'\beta)} - \frac{(1-D_i)Y_iG(X_i'\beta)}{1-G(X_i' \beta)}\biggr) \\
 0 & X_iX_i'G(X_i' \beta)(1-G(X_i'\beta))
 \end{pmatrix}
 $$
@@ -887,7 +903,7 @@ So we can estimate the standard error of $\hat{\tau}^{IPW}_1$
 
 ```{r}
 obs_df$const <- rep(1,nrow(obs_df))
-X <- as.matrix(select(obs_df,c(const,age,agesq,education,educationsq,married,
+X <- as.matrix(dplyr::select(obs_df,c(const,age,agesq,education,educationsq,married,
                                re75,re75sq,black,hispanic,nodegree)))
 A <- 0
 B12 <- 0
@@ -899,8 +915,8 @@ for (i in 1:nrow(X)){
   aux <-  matrix(c(D[i]*Y[i]/PS[i] - (1-D[i])*Y[i]/(1-PS[i]) - ipw1,
                     X[i,]*(D[i] - PS[i])),k+1,1)
   A <- A + aux%*%t(aux)
-  B12 <- B12 - t(X[i,])*((D[i]*Y[i])/PS[i] + ((1-D[i])*Y[i]*PS[i]*(1-PS[i]))/(1-PS[i])^2)
-  B22 <- B22 + (X[i,] %*% t(X[i,]))*(PS[i]*(1-PS[i]))
+  B12 <- B12 - t(X[i,])*((D[i]*Y[i]*(1-PS[i]))/PS[i] + ((1-D[i])*Y[i]*PS[i])/(1-PS[i]))
+  B22 <- B22 - (X[i,] %*% t(X[i,]))*(PS[i]*(1-PS[i]))
 }
 B <- (1/nrow(X))*rbind(cbind(-nrow(X),B12), cbind(rep(0,k),B22))
 V <- inv(B) %*% ((1/nrow(X))*A) %*% inv(B)
@@ -914,33 +930,20 @@ Inference for $\hat{\tau}_2^{IPW}$ and $\hat{\tau}^{DR}$ inference follows simil
 Note that we can rewrite $\hat{\tau}^{DR}$ as
 
 $$
-\hat{\tau}^{DR} = \frac{1}{n}\sum_{i=1}^n \biggl( \hat{m}_1(X_i) - \hat{m}_0(X_i) + \frac{D_i}{\hat{p}(X_i)}[Y_i - \hat{m}_1(X_i)] -  \frac{1-D_i}{1 - \hat{p}(X_i)}[Y_i - \hat{m}_0(X_i)] \biggr)
+\hat{\tau}^{DR} = \frac{1}{n}\sum_{i=1}^n \biggl( \hat{m}_1(X_i) - \hat{m}_0(X_i) + \frac{D_i}{\hat{p}(X_i)}[Y_i - \hat{m}_1(X_i)] -  \frac{1-D_i}{1 - \hat{p}(X_i)}[Y_i - \hat{m}_0(X_i)] \biggr).
 $$
-Now define 
+
+Note that this resembles the direct estimation of the ATE but with an added term, this term is a correction term which ensures local robustness. Now define 
 
 $$
-\psi(Z_i, p, m_1, m_0, \tau) = m_1(X_i) - m_0(X_i) + \frac{D_i}{p(X_i)}[Y_i - m_1(X_i)] -  \frac{(1-D_i)}{1 - p(X_i)}[Y_i - m_0(X_i)] - \tau,
+\psi(Z_i, p, m_1, m_0, \tau) = m_1(X_i) - m_0(X_i) + \underbrace{\frac{D_i}{p(X_i)}[Y_i - m_1(X_i)] -  \frac{(1-D_i)}{1 - p(X_i)}[Y_i - m_0(X_i)]}_{\phi(Z_i,p,m_1,m_0)} - \tau,
 $$
-and notice that $\hat{\tau}^{DR}$ is the $\tau$ which solves $\sum_{i=1}^n \psi(Z_i, \hat{p}, \hat{m}_1, \hat{m}_0, \tau) = 0$. It turns out that $\psi$ has another very special property: that of an orthogonal moment function. This means that, locally, estimating nuisance functions $p$ $m_1$ and $m_0$ has no impact. In fact we can even estimate them non-parametrically under mild rate conditions. Modifying slightly the estimator to estimate $p$, $m_1$ and $m_0$ with observations different from the ones we use to estimate $\tau_0$ (this is called cross-fitting) allows us to avoid over-fitting, use many non-parametric estimators such as machine learners and provide valid inference based only on the orthogonal moment function $\psi$. Hence, we define the locally robust IPW estimator as a cross-fitted version of the above. Partition the observations in $L$ sets denoted by $I_1,...,I_L$, then 
+and notice that $\hat{\tau}^{DR}$ is the $\tau$ which solves $\sum_{i=1}^n \psi(Z_i, \hat{p}, \hat{m}_1, \hat{m}_0, \tau) = 0$. The $\phi$ function is sometimes called the First Step Influence Function (FSIF, see [@chernozhukov2022locally]). As already stated it makes the orthogonal moment function locally robust by capturing the effect of first steps estimation. It turns out that $\psi$ has another very special property: that of an orthogonal moment function. This means that, locally, estimating nuisance functions $p$ $m_1$ and $m_0$ has no impact. In fact we can even estimate them non-parametrically under mild rate conditions. Modifying slightly the estimator to estimate $p$, $m_1$ and $m_0$ with observations different from the ones we use to estimate $\tau_0$ (this is called cross-fitting) allows us to avoid over-fitting, use many non-parametric estimators such as machine learners and provide valid inference based only on the orthogonal moment function $\psi$. Hence, we define the locally robust IPW estimator as a cross-fitted version of the above. Partition the observations in $L$ sets denoted by $I_1,...,I_L$, then 
 
 $$
 \hat{\tau}^{LR} = \frac{1}{n} \sum_{l=1}^L \sum_{i \in I_l} \biggl(\hat{m}_{1,l}(X_i) - \hat{m}_{0,l}(X_i) + \frac{D_i}{\hat{p}_l(X_i)}[Y_i - \hat{m}_{1,l}(X_i)] -  \frac{(1-D_i)}{1 - \hat{p}_l(X_i)}[Y_i - \hat{m}_{0,l}(X_i)] \biggr)
 $$
-To estimate it let first split the data. We pick $L=2$ to ensure there are some treated observations in each split. We randomly allocate half of the treated and half of the control in one split(df1) and the rest in the other split (df2)
-
-```{r}
-ind1 <- sample(1:sum(obs_df$treat), floor(sum(obs_df$treat)/2))
-treat1 <- filter(obs_df, treat == 1)[ind1,]
-treat2 <- filter(obs_df, treat == 1)[-ind1,]
-ind2 <- sample(1:sum(1 - obs_df$treat), floor(sum(1 -obs_df$treat)/2))
-contr1 <- filter(obs_df, treat == 0)[ind2,]
-contr2 <- filter(obs_df, treat == 0)[-ind2,]
-
-df1 <- rbind(treat1,contr1)
-df2 <- rbind(treat1,contr2)
-```
-
-Since 
+To estimate it we split the data in two.
 
 ```{r}
 set.seed(123)
@@ -965,7 +968,6 @@ for (i in 1:L){
 
 }
 
-ps <- ps + 0.001*(ps == 0)
 ipwlr_sc <- fv1 - fv0 + (D/ps)*(Y-fv1) - ((1-D)/(1-ps))*(Y-fv0)
 ipwlr <- mean(ipwlr_sc)
 se_lr <- sd(ipwlr_sc)/sqrt(n)
@@ -973,4 +975,12 @@ c(ipwlr = ipwlr, se = se_lr)
 
 ```
 
+We still get a negative effect and very large standard errors. In general this data seems to be very ill suited for estimating treatment effects since the controls are wildly different from the treated.
 
+## Packages and other sources
+
+For a book on treatment effects one can read [@angrist2009mostly], for a reference on IPW  is a good reference is [@lunceford2004stratification]. The theory of the logistic regression is that of the conditional MLE and can be found for instance in [@wooldridge2002econometric]. A similar tutorial to this can be found [here](https://bookdown.org/halflearned/tutorial/ate1.html#aipw-estimators). Also, there are several packages with functions to perform the above estimation. An example of such a package is [PSweight](https://arxiv.org/pdf/2010.08893.pdf) in [@zhou2020psweight] where the package is compared to other similar packages.
+
+# References
+
+<div id="refs"></div>
