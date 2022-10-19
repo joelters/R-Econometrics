@@ -616,7 +616,7 @@ library(ranger)
 #download package from github see https://github.com/jjchern/lalonde
 devtools::install_github("jjchern/lalonde")
 
-exp_df <- as_tibble(lalonde::nsw)
+exp_df <- as_tibble(lalonde::nsw_dw)
 print(exp_df)
 ```
 

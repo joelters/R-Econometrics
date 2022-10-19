@@ -1,13 +1,13 @@
 ---
-title: "aaa"
-author: "bbb"
+title: "Treatment effects"
 output:
-  html_document:
+  bookdown::html_document2:
     theme: yeti
     toc: true
     toc_float: true
 bibliography: references.bib
 ---
+
 \newcommand{\htau}{\widehat{\tau}}
 \newcommand{\hmu}{\hat{\mu}}
 \newcommand{\hp}{\widehat{p}}
@@ -26,7 +26,7 @@ set.seed(2, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = 
 
 # ATE I: Binary treatment
 
-Source RMD file: [link](http.hat://docs.google.com/uc?export=download&id=1WYFBGKPkG3y4lkTox_P7gG2Q6upEjbWd)
+Source RMD file: [link](https://docs.google.com/uc?export=download&id=1WYFBGKPkG3y4lkTox_P7gG2Q6upEjbWd)
 
 
 ```{r, warning=FALSE, message=FALSE}
@@ -92,7 +92,7 @@ As a running example, we will use the National Supported Work (NSW) randomized e
 
 ```{r, message=FALSE, warning=FALSE}
 # Read in data
-#download package from github see http.hat://github.com/jjchern/lalonde
+#download package from github see https://github.com/jjchern/lalonde
 devtools::install_github("jjchern/lalonde")
 data_exp<- as_tibble(lalonde::nsw)
 n <- nrow(data_exp)
@@ -202,7 +202,7 @@ The decomposition above suggests the following procedure, sometimes called the *
 # We'll see a better estimator below.
 
 # Fitting some model of E[Y|X,D]
-fmla <- as.formula(paste(outcome, "~ ", paste(covariates, "*", treatment, collap.hate="+")))
+fmla <- as.formula(paste(outcome, "~ ", paste(covariates, "*", treatment, collapse="+")))
 model <- lm(fmla, data=data_exp)  
 
 # Predicting E[Y|X,D=d] for d in {0, 1}
@@ -221,7 +221,7 @@ print(ate.est)
 This estimator allows us to leverage regression techniques to estimate the ATE, so the resulting estimate should have smaller root-mean-squared error. However, it has several disadvantages that make it undesirable. First, its properties will rely heavily on the model  $\hmu_{d}(x)$ being correctly specified: it will be an unbiased and/or consistent estimate of the ATE provided that $\hmu_{d}(x)$  is an unbiased and/or consistent estimator of  $\E[Y|X=x, D=d]$. In practice, having a well-specified model is not something we want to rely upon. In general, it will also not be asymptotically normal, which means that we can’t easily compute t-statistics and p-values for it.
 
 
-A technical note. Step 1 above can be done by regressing $Y_i$ on $X_i$ using only treated observations to get an estimate $\hat{\mu}_{1}(x)$ first, and then repeating the same to obtain $\hat{\mu}_{0}(x)$ from the control observations. Or it can be done by regression $Y_i$ on both covariates $(X_i, D_i)$ together and obtaining a function $\hat{\mu}_{d}(x)$. Both have advantages and disadvantages, and we refer to [Künzel, Sekhon, Bickel, Yu  (2019)](http.hat://www.pnas.org/content/116/10/4156.short) for a discussion.
+A technical note. Step 1 above can be done by regressing $Y_i$ on $X_i$ using only treated observations to get an estimate $\hat{\mu}_{1}(x)$ first, and then repeating the same to obtain $\hat{\mu}_{0}(x)$ from the control observations. Or it can be done by regression $Y_i$ on both covariates $(X_i, D_i)$ together and obtaining a function $\hat{\mu}_{d}(x)$. Both have advantages and disadvantages, and we refer to [Künzel, Sekhon, Bickel, Yu  (2019)](https://www.pnas.org/content/116/10/4156.short) for a discussion.
 
 How do we compute s.e. for the previous estimator?
 
@@ -240,14 +240,14 @@ c("tauhatLR" = ateLR.est, "seLR" = ateLRsd.est)
 
 ## Inverse propensity-weighted estimator {#ipw}
 
-The main idea in LaLonde (1986) is to replace the experimental control group with a control group which is taken from a survey. This means that we go from an experimental setting to an observational one (one where the potential outcomes cannot be expected to be independent from the treatment). The goal is to see whether observational methods can get near to the experimental estimates. To construct this database we keep only the treated from the experimental data and take as control the Current Population Survey (Cp.hat).
+The main idea in LaLonde (1986) is to replace the experimental control group with a control group which is taken from a survey. This means that we go from an experimental setting to an observational one (one where the potential outcomes cannot be expected to be independent from the treatment). The goal is to see whether observational methods can get near to the experimental estimates. To construct this database we keep only the treated from the experimental data and take as control the Current Population Survey (CPS).
 
 
 ```{r}
-cp.hat_lalonde <- lalonde::cp.hat_controls2
+cps_lalonde <- lalonde::cps_controls2
 data_obs <- data_exp %>%
   filter(treat == 1) %>% 
-  bind_rows(cp.hat_lalonde) %>% 
+  bind_rows(cps_lalonde) %>% 
   dplyr::select(-data_id)
 ```
 
@@ -257,7 +257,7 @@ We compute the direct estimator with the observational data
 # We'll see a better estimator below.
 
 # Fitting some model of E[Y|X,D]
-fmla <- as.formula(paste(outcome, "~ ", paste(covariates, "*", treatment, collap.hate="+")))
+fmla <- as.formula(paste(outcome, "~ ", paste(covariates, "*", treatment, collapse="+")))
 model <- lm(fmla, data=data_obs)  
 
 # Predicting E[Y|X,D=d] for d in {0, 1}
@@ -274,14 +274,27 @@ print(ate.est)
 ```
 We see that the estimated ATE is very negative. This is because the treatment and the control are hardly comparable. The treatment is formed by disadvantaged individuals and the control by a representative sample of the US population. In the absence of treatment disadvantaged individuals would already have much lower earnings. 
 
-We will use now the IPW estimator. We must first estimate the assignment probability given some model, for example using logistic regression, forests, etc. With respect to modeling, the behavior of the IPW estimator is similar to the direct estimator: if $\hat{p}(X_i)$ is an unbiased estimate of $p(X_i)$, then \@ref(eq:ipw-treated) is an unbiased estimate of $E[Y(1)]$; and we can show that if $\hat{p}(X_i)$ is a consistent estimator of $p(X_i)$, then \@ref(eq:ipw-treated) is consistent for $E[Y(1)]$. 
+We will use now the IPW estimator. Note that using unconfoundedness
+
+$$
+E[Y_i(1)] = E[E[Y_i | D_i = 1, X_i]] = \frac{E[E[Y_i D_i | X_i]]}{p(X_i)} = \frac{E[Y_i D_i]}{p(X_i)},
+$$
+
+meaning that we can estimate $E[Y_i(1)]$ with
+
+\begin{equation}
+  (\#eq:ipw-treated)
+  \frac{n^{-1} \sum_{i=1}^n Y_i D_i}{\hat{p}(X_i)}.
+\end{equation}
+
+We must first estimate the assignment probability given some model, for example using logistic regression, forests, etc. With respect to modeling, the behavior of the IPW estimator is similar to the direct estimator: if $\hat{p}(X_i)$ is an unbiased estimate of $p(X_i)$, then \@ref(eq:ipw-treated) is an unbiased estimate of $E[Y(1)]$; and we can show that if $\hat{p}(X_i)$ is a consistent estimator of $p(X_i)$, then \@ref(eq:ipw-treated) is consistent for $E[Y(1)]$. 
 
 Another important point is that when the estimated treatment propensity $\hat{p}(X_i)$ is small, the summands in \@ref(eq:ipw-treated) can be very large. In particular, if $\hat{p}(x)$ is exactly zero, then this estimator is undefined. That is why, in addition to requiring conditional unconfoundedness \@ref(eq:cond-unconf), it also requires the overlap condition \@ref(eq:overlap). In any case, when overlap is small (i.e., $\hat{p}(x)$ is very close to zero for many $x$), IPW becomes an unattractive estimator due to its high variance. We'll see in the next section an improved estimator that builds upon IPW but is strictly superior and should be used instead.
 
 Finally, we just derived an estimator of the average treated outcome, but we could repeat the argument for control units instead. Subtracting the two estimators leads to the following inverse propensity-weighted estimate of the treatment effect:
 \begin{equation}
   (\#eq:ipw)
-  \widehat{\tau}^{IPW} :=
+  \widehat{\tau}_1^{IPW} :=
   \frac{1}{n} \sum_{i=1}^{n} Y_i \frac{W_i}{\hp(X_i)}
   -
   \frac{1}{n} \sum_{i=1}^{n} Y_i \frac{(1 - W_i) }{1-\hp(X_i)}.
@@ -298,12 +311,12 @@ $$Z_i = Y_i \times \left(\frac{D_i}{\hat{p}(X_i)} - \frac{(1-D_i)}{(1-\hat{p}(X_
 # Available in randomized settings and observational settings with unconfoundedness+overlap
 
 # Estimate the propensity score p(X) via logistic regression
-fmla <- as.formula(paste0("~", paste0(covariates, collap.hate="+")))
+fmla <- as.formula(paste0("~", paste0(covariates, collapse="+")))
 D <- data_obs[,treatment]
 Y <- data_obs[,outcome]
 XX <- model.matrix(fmla, data_obs)
-y <- as.numeric(unlist(D))
-logit <- glm(y~XX, data=data_obs, family="binomial")
+d <- as.numeric(unlist(D))
+logit <- glm(d~XX, data=data_obs, family="binomial")
 p.hat <- logit$fitted.values
 
 # Using the fact that
@@ -315,10 +328,8 @@ ate.tstat <- ate.est / ate.se
 ate.pvalue <- 2*(pnorm(1 - abs(ate.est/ate.se)))
 ate.results <- c(estimate=ate.est, std.error=ate.se, t.stat=ate.tstat, pvalue=ate.pvalue)
 print(ate.results)
-## VOY POR AQUI
 
 ```
-
 
 Noting that $\mathbb{E}[D_i/p(X_i)] = 1$ by LIE and the same happens with $\mathbb{E}[(1-D_i)/(1-p(X_i))]$, an asymptotically equivalent estimator is
 
@@ -326,208 +337,118 @@ $$
 \hat{\tau}^{IPW}_2 = \biggl(\sum_{i=1}^n \frac{D_i}{\hat{p}(X_i)}\biggr)^{-1} \biggl(\sum_{i=1}^n \frac{D_i Y_i}{\hat{p}(X_i)}\biggr) - \biggl(\sum_{i=1}^n \frac{1-D_i}{1-\hat{p}(X_i)}\biggr)^{-1} \biggl(\sum_{i=1}^n\frac{(1-D_i)Y_i}{1-\hat{p}(X_i)}\biggr)
 $$
 
-$\hat{\tau}^{IPW}_1$ and $\hat{\tau}^{IPW}_2$ are called Inverse Probability Weight (IPW) estimators and are a difference of weighted sums of $Y_i$. In $\hat{\tau}^{IPW}_2$ the weights sum up to $1$ and we have better finite sample properties. In fact, both estimators are members of the broader class of consistent, semiparametric estimators found in [@robins1994estimation]. In this paper they find the estimator achieving the least asymptotic variance in this class to be none of the above but
+$\hat{\tau}^{IPW}_1$ and $\hat{\tau}^{IPW}_2$ are called Inverse Probability Weight (IPW) estimators and are a difference of weighted sums of $Y_i$. In $\hat{\tau}^{IPW}_2$ the weights sum up to $1$ and we have better finite sample properties. The algorithm for this estimator is the same as before but in step three we now compute the mean and standard deviation of
 
 $$
-\hat{\tau}^{DR} = \frac{1}{n}\sum_{i=1}^n \frac{D_iY_i - \hat{m}_1(X_i)(D_i - \hat{p}(X_i))}{\hat{p}(X_i)} - \frac{1}{n}\sum_{i=1}^n \frac{(1-D_i)Y_i - \hat{m}_0(X_i)(D_i - \hat{p}(X_i))}{1 - \hat{p}(X_i)}, 
+\tilde{Z}_i = Y_i \times \biggl[\biggl(\sum_{i=1}^n \frac{D_i}{\hat{p}(X_i)}\biggr)^{-1} \frac{D_i}{\hat{p}(X_i)} - \biggl(\sum_{i=1}^n \frac{1-D_i}{1-\hat{p}(X_i)}\biggr)^{-1} \frac{1-D_i}{1 - \hat{p}(X_i)} \biggr]
 $$
-
-where $m_j(X_i) = \mathbb{E}[Y_i | D_i = j, X_i]$, $j = 0,1$ and $\hat{m}_j(X_i)$ is some estimator. This estimator is called Doubly robust because it has the attractive property that if we impose some parametric specification say $m_j(X_i) = m_j(X_i, \alpha_j)$, the estimator is still consistent if $m_j$ is incorrectly specified but the specification of the propensity score is correct and it is also consistent if the specification of the propensity score is not correct but that of $m_j$ is correct. This estimator is also called augmented IPW since it is "augmented" with the outcome regression. Now we are ready to do these estimations in R
 
 ```{r}
-ipw1 <- mean(D*Y/p.hat - (1-D)*Y/(1-p.hat))
-ipw2 <- (1/(sum(D/p.hat)))*sum(D*Y/p.hat) - (1/(sum((1-D)/(1-p.hat))))*sum((1-D)*Y/(1-p.hat))
+z2 <- Y * ((1/(sum(D/p.hat)))*(D/p.hat) - (1/(sum((1-D)/(1-p.hat))))*((1-D)/(1-p.hat)))
+z2 <- as.numeric(unlist(z2))
+ate2.est <- mean(z2)
+ate2.se <- sd(z2) / sqrt(length(z2))
+ate2.tstat <- ate2.est / ate2.se
+ate2.pvalue <- 2*(pnorm(1 - abs(ate2.est/ate2.se)))
+ate2.results <- c(estimate=ate2.est, std.error=ate2.se, t.stat=ate2.tstat, pvalue=ate2.pvalue)
+print(ate2.results)
+```
 
+In fact, both estimators are members of the broader class of consistent, semiparametric estimators found in [@robins1994estimation]. In this paper they find the estimator achieving the least asymptotic variance in this class to be none of the above but
+
+$$
+\hat{\tau}^{DR} = \frac{1}{n}\sum_{i=1}^n \frac{D_iY_i - \hat{\mu}_1(X_i)(D_i - \hat{p}(X_i))}{\hat{p}(X_i)} - \frac{1}{n}\sum_{i=1}^n \frac{(1-D_i)Y_i - \hat{\mu}_0(X_i)(D_i - \hat{p}(X_i))}{1 - \hat{p}(X_i)}, 
+$$
+
+This estimator is called Doubly robust because it has the attractive property that it is still consistent if $\mu_j$ $j = 0,1$, is incorrectly specified but the specification of the propensity score is correct. It is also consistent if the specification of the propensity score is not correct but that of $\mu_j$ is. This estimator is also called augmented IPW since it is "augmented" with the outcome regression. Now we are ready to do these estimations in R, we can just estimate the mean and standard deviation of
+
+$$
+Z^{DR}_i = Y_i \times \biggl[ \frac{D_i}{\hat{p}(X_i)} - \frac{1-D_i}{1-\hat{p}(X_i)} \biggr] + \frac{\hat{\mu}_0(X_i)(D_i - \hat{p}(X_i))}{1 - \hat{p}(X_i)} - \frac{\hat{\mu}_1(X_i)(D_i - \hat{p}(X_i))}{\hat{p}(X_i)}
+$$
+
+```{r}
 # Doubly Robust
-m1 <- lm(re78 ~ poly(age,2) + education + black + hispanic + nodegree, filter(data_obs,treat == 1))
-m1hat <- predict(m1, data_obs)
-m0 <- lm(re78 ~ poly(age,2) + education + black + hispanic + nodegree, filter(data_obs,treat == 0))
-m0hat <- predict(m0, data_obs)
-
-ipwdr <- mean((D*Y - (D-p.hat)*m1hat)/p.hat) - mean(((1-D)*Y - (D-p.hat)*m0hat)/(1-p.hat))
-c("IPW1" = ipw1, "IPW2" = ipw2, "DR" = ipwdr)
+z.dr <- Y*(D/p.hat - (1-D)/(1-p.hat)) + muhat.ctrl*(D-p.hat)/(1-p.hat) - muhat.treat*(D-p.hat)/p.hat
+z.dr <- as.numeric(unlist(z.dr))
+atedr.est <- mean(z.dr)
+atedr.se <- sd(z.dr) / sqrt(length(z.dr))
+atedr.tstat <- atedr.est / atedr.se
+atedr.pvalue <- 2*(pnorm(1 - abs(atedr.est/atedr.se)))
+atedr.results <- c(estimate=atedr.est, std.error=atedr.se, t.stat=atedr.tstat, pvalue=atedr.pvalue)
+print(atedr.results)
 ```
 
-We can see that the estimates are not very stable. This can happen when the common support assumption is violated since having estimated propensity scores in the denominators which are close to zero will produce instability. In our case it is very hard to maintain the common support assumption. To see these let us do an histogram with the propensity scores by treatment status.
+## Locally robust estimator
 
-```{r}
-c1 <- rgb(173,216,230,max = 255, alpha = 180, names = "lt.blue")
-c2 <- rgb(255,192,203, max = 255, alpha = 180, names = "lt.pink")
-
-par(mar = c(5, 5, 5, 5) + 0.3)
-hist(filter(data_obs, treat == 1)$p.hat, freq = TRUE, col = c1, axes = FALSE, xlab = "", ylab = "", main = "")
-axis(side = 1, xlim = c(0,1))
-axis(side = 4, ylab = "")
-mtext(side = 4, text = "NSW", line = 2.5, col = "blue")
-par(new=TRUE)
-hist(filter(data_obs, treat == 0)$p.hat, ylim = c(0,3000), freq = TRUE, axes = FALSE, col = c2, xlab = "", ylab = "", main = "Common Support")
-axis(side = 2)
-mtext(side = 2, text = "Cp.hat", line = 2.5, col = "pink")
-```
-
-
-We see that the control group (the Cp.hat observations) are highly concentrated close to zero. This is because the NSW experiment chose disadvantaged individuals which are not representative of the US population as the Cp.hat is. Hence, we have a comparability issue. A practical solution is to trim the observations with very low (or high) propensity scores. For instance, if we trim observation with a propensity score lower than 0.1 and higher than 0.9 we see the Common Support assumption seems more plausible
-
-````{r}
-data_obstrim <- filter(data_obs, p.hat > 0.1 & p.hat < 0.9)
-
-par(mar = c(5, 5, 5, 5) + 0.3)
-hist(filter(data_obstrim, treat == 1)$p.hat, freq = TRUE, col = c1, axes = FALSE, xlab = "", ylab = "", main = "")
-axis(side = 1, xlim = c(0,1))
-axis(side = 4, ylab = "")
-mtext(side = 4, text = "NSW", line = 2.5, col = "blue")
-par(new=TRUE)
-hist(filter(data_obstrim, treat == 0)$p.hat, freq = TRUE, axes = FALSE, col = c2, xlab = "", ylab = "", main = "Common Support")
-axis(side = 2)
-mtext(side = 2, text = "Cp.hat", line = 2.5, col = "pink")
-```
-
-
-and the estimates become more stable.
-
-```{r, warning=FALSE}
-Ytr <- data_obstrim$re78
-Dtr <- data_obstrim$treat
-p.hattr <- data_obstrim$p.hat
-
-ipw1tr <- mean(Dtr*Ytr/p.hattr - (1-Dtr)*Ytr/(1-p.hattr))
-ipw2tr <- (1/(sum(Dtr/p.hattr)))*sum(Dtr*Ytr/p.hattr) - (1/(sum((1-Dtr)/(1-p.hattr))))*sum((1-Dtr)*Ytr/(1-p.hattr))
-
-# Doubly Robust
-m1 <- lm(re78 ~ poly(age,2) + education + black + hispanic + nodegree, filter(data_obstrim,treat == 1))
-m1hat <- predict(m1, data_obstrim)
-m0 <- lm(re78 ~ poly(age,2) + education + black + hispanic + nodegree, filter(data_obstrim,treat == 0))
-m0hat <- predict(m0, data_obstrim)
-
-ipwdrtr <- mean((Dtr*Ytr - (Dtr-p.hattr)*m1hat)/p.hattr) - mean(((1-Dtr)*Ytr - (Dtr-p.hattr)*m0hat)/(1-p.hattr))
-c("IPW1" = ipw1tr, "IPW2" = ipw2tr, "DR" = ipwdrtr)
-```
-
-For the rest of this exercise let us restrict the sample to these observations
-
-```{r}
-data_obs <- data_obstrim
-p.hat <- p.hattr
-Y <- Ytr
-D <- Dtr
-ipw1 <- ipw1tr
-ipw2 <- ipw2tr
-```
-
-## Inference on IPW
-
-$\hat{\tau}_1^{IPW}$ and $\tau_2^{IPW}$ can be written as Z-estimators. Let us illustrate this for $\hat{\tau}_1^{IPW}$, let $Z_i = (Y_i,D_i,X_i)$ be the data and $\theta_0 = (\tau_0, \beta')'$. Define
+We can rewrite $\hat{\tau}^{DR}$ as
 
 $$
-q(Z_i, \theta) = \begin{pmatrix}
-\frac{D_i Y_i}{G(X_i' \beta)} - \frac{(1-D_i)Y_i}{1 - G(X_i' \beta)} - \tau \\
-X_i(D_i - G(X_i'\beta))
-\end{pmatrix}
-$$
-$q(Z_i, \theta)$ is a $(k+1) \times 1$ vector function where $k$ is the dimension of $\beta$. The last $k$ elements of $q(Z_i, \theta)$ are the FOCs of the MLE from the Logit model (the score). Then, $\mathbb{E}[q(Z_i, \theta_0)] = 0$ and $(\hat{\tau}^{IPW}_1, \hat{\beta})$ are chosen such that $\sum_{i=1}^n q(Z_i, \hat{\theta}) = 0$. Let $\dot{q}(Z_i, \theta)$ be the matrix of derivatives of $q$ with respect to parameters in $\theta$. By taking a mean value expansion around $\theta_0$ and rearranging we can show that 
-
-$$
-\sqrt{n}(\hat{\theta} - \theta_0) = - \biggl(n^{-1}\sum_{i=1}^n \dot{q}(Z_i, \bar{\theta})\biggr)^{-1} \biggl(n^{-1/2} \sum_{i=1}^n q(Z_i, \theta_0) \biggr) \to_d \mathcal{N}(0,\mathbb{E}[\dot{q}(Z_i,\theta_0)]^{-1} \mathbb{E}[q(Z_i, \theta_0)^2]\mathbb{E}[\dot{q}(Z_i,\theta_0)]^{-1}),
+\hat{\tau}^{DR} = \frac{1}{n}\sum_{i=1}^n \biggl( \hat{\mu}_1(X_i) - \hat{\mu}_0(X_i) + \frac{D_i}{\hat{p}(X_i)}[Y_i - \hat{\mu}_1(X_i)] -  \frac{1-D_i}{1 - \hat{p}(X_i)}[Y_i - \hat{\mu}_0(X_i)] \biggr).
 $$
 
-where $\bar{\theta}$ is some intermediate point between $\hat{\theta}$ and $\theta_0$. So we can estimate the variance as
+Note that this resembles the direct estimation of the ATE but with an added term, this term is a correction term which ensures local robustness. Let
 
 $$
-\hat{V}_1 = \biggl(n^{-1}\sum_{i=1}^n \dot{q}(Z_i,\hat{\theta})\biggr)^{-1} \biggl(n^{-1}\sum_{i=1}^nq(Z_i, \hat{\theta}) q(Z_i, \hat{\theta})' \biggr) \biggl(n^{-1}\sum_{i=1}^n \dot{q}(Z_i,\hat{\theta})\biggr)^{-1}
+\psi(Z_i, p, \mu_1, \mu_0, \tau) = \mu_1(X_i) - \mu_0(X_i) + \underbrace{\frac{D_i}{p(X_i)}[Y_i - \mu_1(X_i)] -  \frac{(1-D_i)}{1 - p(X_i)}[Y_i - \mu_0(X_i)]}_{\phi(Z_i,p,\mu_1,\mu_0)} - \tau,
 $$
 
-
-Noticing that $\frac{d}{d u} G(u) = G(u)(1-G(u))$ we can compute the $(k + 1) \times (k +1)$ matrix $\dot{q}$
-
-$$
-\dot{q}(Z_i, \theta) = \begin{pmatrix}
--1 & -X_i'\biggl(\frac{D_iY_i(1-G(X_i'\beta))}{G(X_i'\beta)} - \frac{(1-D_i)Y_iG(X_i'\beta)}{1-G(X_i' \beta)}\biggr) \\
-0 & X_iX_i'G(X_i' \beta)(1-G(X_i'\beta))
-\end{pmatrix}
-$$
-
-So we can estimate the standard error of $\hat{\tau}^{IPW}_1$
-
-```{r}
-data_obs$const <- rep(1,nrow(data_obs))
-X <- as.matrix(dplyr::select(data_obs,c(const,age,agesq,education,educationsq,married,
-                               re75,re75sq,black,hispanic,nodegree)))
-A <- 0
-B12 <- 0
-B22 <- 0
-G <- function(u){exp(u)/(1+exp(u))}
-k <- ncol(X)
-
-for (i in 1:nrow(X)){
-  aux <-  matrix(c(D[i]*Y[i]/p.hat[i] - (1-D[i])*Y[i]/(1-p.hat[i]) - ipw1,
-                    X[i,]*(D[i] - p.hat[i])),k+1,1)
-  A <- A + aux%*%t(aux)
-  B12 <- B12 - t(X[i,])*((D[i]*Y[i]*(1-p.hat[i]))/p.hat[i] + ((1-D[i])*Y[i]*p.hat[i])/(1-p.hat[i]))
-  B22 <- B22 - (X[i,] %*% t(X[i,]))*(p.hat[i]*(1-p.hat[i]))
-}
-B <- (1/nrow(X))*rbind(cbind(-nrow(X),B12), cbind(rep(0,k),B22))
-V <- inv(B) %*% ((1/nrow(X))*A) %*% inv(B)
-se <- sqrt(V[1,1]/nrow(X))
-c("IPW1" = ipw1, "SE" = se)
-```
-Inference for $\hat{\tau}_2^{IPW}$ and $\hat{\tau}^{DR}$ inference follows similarly by framing the problem as a Z-estimator. With a little tweak in the double robust estimator we can get simpler inference.
-
-## Locally Robust IPW
-
-Note that we can rewrite $\hat{\tau}^{DR}$ as
+and notice that $\hat{\tau}^{DR}$ is the $\tau$ which solves $\sum_{i=1}^n \psi(Z_i, \hat{p}, \hat{\mu}_1, \hat{\mu}_0, \tau) = 0$. The $\phi$ function is sometimes called the First Step Influence Function (FSIF, see [@chernozhukov2022locally]).It makes the orthogonal moment function locally robust by capturing the effect of first steps estimation. $\psi$ has a very special property: that of an orthogonal moment function. This means that, locally, estimating nuisance functions $p$, $\mu_1$ and $\mu_0$ has no impact. In fact we can even estimate them non-parametrically under mild rate conditions. Modifying slightly the estimator to estimate $p$, $\mu_1$ and $\mu_0$ with observations different from the ones we use to estimate $\tau_0$ (this is called cross-fitting) allows us to avoid over-fitting, use many non-parametric estimators such as machine learners, treat high dimensional cases and provide valid inference based only on the orthogonal moment function $\psi$. Hence, we define the locally robust IPW estimator as a cross-fitted version of the above. Partition the observations in $L$ sets denoted by $I_1,...,I_L$ and let $\hat{\mu}_{j,l}$ for $j = 0,1$, be an estimator of $\mu_j$ which does not use observations in partition $I_l$. Then 
 
 $$
-\hat{\tau}^{DR} = \frac{1}{n}\sum_{i=1}^n \biggl( \hat{m}_1(X_i) - \hat{m}_0(X_i) + \frac{D_i}{\hat{p}(X_i)}[Y_i - \hat{m}_1(X_i)] -  \frac{1-D_i}{1 - \hat{p}(X_i)}[Y_i - \hat{m}_0(X_i)] \biggr).
+\hat{\tau}^{LR} = \frac{1}{n} \sum_{l=1}^L \sum_{i \in I_l} \biggl(\hat{\mu}_{1,l}(X_i) - \hat{\mu}_{0,l}(X_i) + \frac{D_i}{\hat{p}_l(X_i)}[Y_i - \hat{\mu}_{1,l}(X_i)] -  \frac{(1-D_i)}{1 - \hat{p}_l(X_i)}[Y_i - \hat{\mu}_{0,l}(X_i)] \biggr)
 $$
-
-Note that this resembles the direct estimation of the ATE but with an added term, this term is a correction term which ensures local robustness. Now define 
-
-$$
-\p.hati(Z_i, p, m_1, m_0, \tau) = m_1(X_i) - m_0(X_i) + \underbrace{\frac{D_i}{p(X_i)}[Y_i - m_1(X_i)] -  \frac{(1-D_i)}{1 - p(X_i)}[Y_i - m_0(X_i)]}_{\phi(Z_i,p,m_1,m_0)} - \tau,
-$$
-and notice that $\hat{\tau}^{DR}$ is the $\tau$ which solves $\sum_{i=1}^n \p.hati(Z_i, \hat{p}, \hat{m}_1, \hat{m}_0, \tau) = 0$. The $\phi$ function is sometimes called the First Step Influence Function (FSIF, see [@chernozhukov2022locally]). As already stated it makes the orthogonal moment function locally robust by capturing the effect of first step.hat estimation. It turns out that $\p.hati$ has another very special property: that of an orthogonal moment function. This means that, locally, estimating nuisance functions $p$ $m_1$ and $m_0$ has no impact. In fact we can even estimate them non-parametrically under mild rate conditions. Modifying slightly the estimator to estimate $p$, $m_1$ and $m_0$ with observations different from the ones we use to estimate $\tau_0$ (this is called cross-fitting) allows us to avoid over-fitting, use many non-parametric estimators such as machine learners and provide valid inference based only on the orthogonal moment function $\p.hati$. Hence, we define the locally robust IPW estimator as a cross-fitted version of the above. Partition the observations in $L$ sets denoted by $I_1,...,I_L$, then 
-
-$$
-\hat{\tau}^{LR} = \frac{1}{n} \sum_{l=1}^L \sum_{i \in I_l} \biggl(\hat{m}_{1,l}(X_i) - \hat{m}_{0,l}(X_i) + \frac{D_i}{\hat{p}_l(X_i)}[Y_i - \hat{m}_{1,l}(X_i)] -  \frac{(1-D_i)}{1 - \hat{p}_l(X_i)}[Y_i - \hat{m}_{0,l}(X_i)] \biggr)
-$$
-To estimate it we split the data in two.
+Since this allows for general machine learners we are going to use random forests via the package ranger. We let $L=2$.
 
 ```{r}
 set.seed(123)
+
+fmlaD <- as.formula(paste0("treat~", paste0(covariates, collapse="+")))
+fmlaY <- as.formula(paste0("re78~", paste0(covariates, collapse="+")))
+XXD <- model.matrix(fmlaD, data_obs)
+XXY <- model.matrix(fmlaY, data_obs)
+
 n <- nrow(data_obs)
 L <- 2
 ind <- split(seq(n), seq(n) %% L)
 
+
+
 fv1 <- rep(0,n)
 fv0 <- rep(0,n)
-p.hat <- rep(0,n)
-for (i in 1:L){ 
-  mp.hat <- ranger(treat ~ age + agesq + education + educationsq + married + re75 + re75sq + black +    
-                   hispanic + nodegree, data = data_obs[ind[[i]],])
-  mfv1 <- ranger(re78 ~ treat + age + agesq + education + black + hispanic + nodegree,
-                data = filter(data_obs[ind[[i]],], treat == 1))
-  mfv0 <- ranger(re78 ~ treat + age + agesq + education + black + hispanic + nodegree,
-                data = filter(data_obs[ind[[i]],], treat == 0))
+ps <- rep(0,n)
+for (i in 1:L){
+  mps <- ranger(fmlaD, data = data_obs[ind[[i]],])
+  mfv1 <- ranger(fmlaY, data = filter(data_obs[ind[[i]],], treat == 1))
+  mfv0 <- ranger(fmlaY, data = filter(data_obs[ind[[i]],], treat == 0))
   
-  fv1[-ind[[i]]] <- predict(mfv1, data_obs[-ind[[i]],])$predictions
-  fv0[-ind[[i]]] <- predict(mfv0, data_obs[-ind[[i]],])$predictions
-  p.hat[-ind[[i]]] <- predict(mp.hat, data_obs[-ind[[i]],])$predictions
+  fv1[-ind[[i]]] <- predict(mfv1, XXY[-ind[[i]],])$predictions
+  fv0[-ind[[i]]] <- predict(mfv0, XXY[-ind[[i]],])$predictions
+  ps[-ind[[i]]] <- predict(mps, XXD[-ind[[i]],])$predictions
 
 }
 
-ipwlr_sc <- fv1 - fv0 + (D/p.hat)*(Y-fv1) - ((1-D)/(1-p.hat))*(Y-fv0)
-ipwlr <- mean(ipwlr_sc)
-se_lr <- sd(ipwlr_sc)/sqrt(n)
-c(ipwlr = ipwlr, se = se_lr)
+z.lr <- fv1 - fv0 + (D/ps)*(Y-fv1) - ((1-D)/(1-ps))*(Y-fv0)
+z.lr <- as.numeric(unlist(z.lr))
+atelr.est <- mean(z.lr)
+atelr.se <- sd(z.lr) / sqrt(length(z.lr))
+atelr.tstat <- atelr.est / atelr.se
+atelr.pvalue <- 2*(pnorm(1 - abs(atelr.est/atelr.se)))
+atelr.results <- c(estimate=atelr.est, std.error=atelr.se, t.stat=atelr.tstat, pvalue=atelr.pvalue)
+#this avoids scientific notation
+options(scipen = 999)
+print(atelr.results)
 
 ```
 
-We still get a negative effect and very large standard errors. In general this data seems to be very ill suited for estimating treatment effects since the controls are wildly different from the treated.
+We still get a very negative effect. In general this data seems to be very ill suited for estimating treatment effects since the controls are wildly different from the treated.
 
 ## Packages and other sources
 
-For a book on treatment effects one can read [@angrist2009mostly], for a reference on IPW  is a good reference is [@lunceford2004stratification]. The theory of the logistic regression is that of the conditional MLE and can be found for instance in [@wooldridge2002econometric]. A similar tutorial to this can be found [here](http.hat://bookdown.org/halflearned/tutorial/ate1.html#aipw-estimators). Also, there are several packages with functions to perform the above estimation. An example of such a package is [p.hatweight](http.hat://arxiv.org/pdf/2010.08893.pdf) in [@zhou2020p.hatweight] where the package is compared to other similar packages.
+For a book on treatment effects one can read [@angrist2009mostly], for a reference on IPW  is a good reference is [@lunceford2004stratification]. The theory of the logistic regression is that of the conditional MLE and can be found for instance in [@wooldridge2002econometric]. A similar tutorial to this can be found [here](https://bookdown.org/halflearned/tutorial/ate1.html#aipw-estimators). Also, there are several packages with functions to perform the above estimation. An example of such a package is [PSweight](https://arxiv.org/pdf/2010.08893.pdf) in [@zhou2020psweight] where the package is compared to other similar packages.
 
 # References
 
 <div id="refs"></div>
+
+
+

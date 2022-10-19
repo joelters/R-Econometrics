@@ -1,0 +1,53 @@
+#Set high dimensional settting
+ord.poly <- 4
+dums <- c("black", "hispanic", "nodegree")
+dum_nod <- "nodegree"
+cns <- c("age", "education")
+agepow <- paste0(c("age",sapply(c(2:5), function(x) paste0("age^",x))),collapse = "+")
+educpow <- paste0(c("education",sapply(c(2:5), function(x) paste0("education^",x))),collapse = "+")
+covs <- paste0(covariates,collapse="+")
+inter1 <- paste0("(",paste0(cns,collapse = "+"),"):(",paste0(dums,collapse = "+"),")")
+fmlaD <- as.formula(paste0("treat~",paste0(paste0(dums, "+",
+                                                agepow, "+",
+                                                educpow,"+",
+                                                paste0(cns,collapse=":"),"+",
+                                                inter1))))
+fmlaY <- as.formula(paste0("re78~",paste0(paste0(dums, "+",
+                                                agepow, "+",
+                                                educpow,"+",
+                                                paste0(cns,collapse=":"),"+",
+                                                inter1))))
+
+XXD <- model.matrix(fmlaD,data_obs)
+XXY <- model.matrix(fmlaY,data_obs)
+
+n <- nrow(data_obs)
+L <- 2
+ind <- split(seq(n), seq(n) %% L)
+
+
+
+fv1 <- rep(0,n)
+fv0 <- rep(0,n)
+ps <- rep(0,n)
+for (i in 1:L){
+  mps <- ranger(fmlaD, data = data_obs[ind[[i]],])
+  mfv1 <- ranger(fmlaY, data = filter(data_obs[ind[[i]],], treat == 1))
+  mfv0 <- ranger(fmlaY, data = filter(data_obs[ind[[i]],], treat == 0))
+  
+  fv1[-ind[[i]]] <- predict(mfv1, XXY[-ind[[i]],])$predictions
+  fv0[-ind[[i]]] <- predict(mfv0, XXY[-ind[[i]],])$predictions
+  ps[-ind[[i]]] <- predict(mps, XXD[-ind[[i]],])$predictions
+
+}
+
+z.lr <- fv1 - fv0 + (D/ps)*(Y-fv1) - ((1-D)/(1-ps))*(Y-fv0)
+z.lr <- as.numeric(unlist(z.lr))
+atelr.est <- mean(z.lr)
+atelr.se <- sd(z.lr) / sqrt(length(z.lr))
+atelr.tstat <- atelr.est / atelr.se
+atelr.pvalue <- 2*(pnorm(1 - abs(atelr.est/atelr.se)))
+atelr.results <- c(estimate=atelr.est, std.error=atelr.se, t.stat=atelr.tstat, pvalue=atelr.pvalue)
+#this avoids scientific notation
+options(scipen = 999)
+print(atelr.results)
